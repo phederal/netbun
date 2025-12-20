@@ -1,17 +1,18 @@
 {
 	"include": [
-		"src/*"
+		"src/**/*"
 	],
 	"exclude": [
 		"node_modules",
 		"dist",
-		"*.test.ts"
+		"test",
+		"**/*.test.ts"
 	],
 	"compilerOptions": {
-		"rootDir": ".",
-		"outDir": "dist",
+		"rootDir": "./src",
+		"outDir": "./dist",
 		"types": [
-			"@types/bun"
+			"bun-types"
 		],
 		"lib": [
 			"ES2020"
@@ -27,5 +28,6 @@
 		"forceConsistentCasingInFileNames": true,
 		"declaration": true,
 		"declarationMap": true,
+		"emitDeclarationOnly": true
 	}
 }

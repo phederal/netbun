@@ -133,7 +133,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 				proxy: invalidProxy,
 			})
 		).rejects.toThrow();
-	}, 2000);
+	}, 15000);
 
 	test('Configuration: Should pass non-SOCKS proxy to native fetch', async () => {
 		const httpProxy = 'http://proxy.example.com:8080';

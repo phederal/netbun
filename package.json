@@ -1,19 +1,25 @@
 {
-	"name": "bun-socks",
-	"version": "1.0.1",
-	"description": "Zero-dependency ... and chunked encoding.",
+	"name": "bunsocks",
+	"version": "0.1.0",
+	"description": "Zero-dependency socks proxy implementation for bun runtimer.",
 	"type": "module",
-	"main": "./src/index.ts",
-	"module": "./src/index.ts",
-	"types": "./src/index.ts",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
 	"engines": {
 		"bun": ">=1.2.0"
 	},
 	"scripts": {
-		"build": "bun build src/index.ts --target=bun --outfile=dist/index.js",
-		"test": "bun test *.test.ts",
+		"build": "bun build --target=bun --sourcemap=external src/index.ts --outdir=dist && bun x tsc",
+		"test": "bun test ./test",
 		"lint": "biome check ./src --fix",
-		"prepublish": "bun run lint && bun run test"
+		"prepublishOnly": "bun run lint && bun run test && bun run build"
 	},
 	"repository": {
 		"type": "git",
@@ -36,12 +42,13 @@
 	"author": "phederal",
 	"license": "MIT",
 	"files": [
-		"./src/index.ts",
+		"dist",
 		"LICENSE",
 		"README.md"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "latest",
-		"@types/bun": "latest"
+		"@types/bun": "latest",
+		"typescript": "^5.9.3"
 	}
 }

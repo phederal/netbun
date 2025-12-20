@@ -106,7 +106,7 @@ export async function connectSocks5(
 				}
 			});
 
-			socket.setTimeout(15000, () => {
+			socket.setTimeout(10000, () => {
 				cleanup();
 				socket.destroy();
 				reject(new Error("Proxy connection timed out"));
