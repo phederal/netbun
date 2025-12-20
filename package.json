@@ -1,0 +1,47 @@
+{
+	"name": "bun-socks",
+	"version": "1.0.1",
+	"description": "Zero-dependency ... and chunked encoding.",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"engines": {
+		"bun": ">=1.2.0"
+	},
+	"scripts": {
+		"build": "bun build src/index.ts --target=bun --outfile=dist/index.js",
+		"test": "bun test *.test.ts",
+		"lint": "biome check ./src --fix",
+		"prepublish": "bun run lint && bun run test"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/phederal/bunsocks.git"
+	},
+	"bugs": {
+		"url": "https://github.com/phederal/bunsocks/issues"
+	},
+	"homepage": "https://github.com/phederal/bunsocks#readme",
+	"keywords": [
+		"bun",
+		"socks",
+		"socks5",
+		"proxy",
+		"fetch",
+		"http",
+		"https",
+		"network"
+	],
+	"author": "phederal",
+	"license": "MIT",
+	"files": [
+		"./src/index.ts",
+		"LICENSE",
+		"README.md"
+	],
+	"devDependencies": {
+		"@biomejs/biome": "latest",
+		"@types/bun": "latest"
+	}
+}

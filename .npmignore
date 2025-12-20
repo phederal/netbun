@@ -1,0 +1,8 @@
+# Exclude test files
+*.test.ts
+
+# Exclude development files
+.github/
+.gitignore
+tsconfig.json
+bun.lock
