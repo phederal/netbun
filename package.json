@@ -1,5 +1,5 @@
 {
-	"name": "bunsocks",
+	"name": "netbun",
 	"version": "0.1.0",
 	"description": "Zero-dependency socks proxy implementation for bun runtimer.",
 	"type": "module",
@@ -23,12 +23,12 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/phederal/bunsocks.git"
+		"url": "https://github.com/phederal/netbun.git"
 	},
 	"bugs": {
-		"url": "https://github.com/phederal/bunsocks/issues"
+		"url": "https://github.com/phederal/netbun/issues"
 	},
-	"homepage": "https://github.com/phederal/bunsocks#readme",
+	"homepage": "https://github.com/phederal/netbun#readme",
 	"keywords": [
 		"bun",
 		"socks",

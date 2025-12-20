@@ -1,7 +1,7 @@
-# bun-socks
+# netbun
 
 [![CI](https://github.com/phederal/bunsocks/actions/workflows/ci.yml/badge.svg)](https://github.com/phederal/bunsocks/actions/workflows/ci.yml)
-[![npm version](https://badge.fury.io/js/bun-socks.svg)](https://badge.fury.io/js/bun-socks)
+[![npm version](https://badge.fury.io/js/netbun.svg)](https://badge.fury.io/js/netbun)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A lightweight, zero-dependency SOCKS5 proxy client specifically designed for [Bun](https://bun.sh).
@@ -28,7 +28,7 @@ While Bun's native `fetch` supports HTTP proxies, it does not currently support 
 ## Installation
 
 ```bash
-bun add bun-socks
+bun add netbun
 ```
 
 ## Usage
@@ -40,7 +40,7 @@ Import `fetch` from the library and use the `proxy` option in the init object. T
 ### Basic GET Request
 
 ```typescript
-import { fetch } from "bun-socks";
+import { fetch } from "netbun";
 
 const response = await fetch("https://api.ipify.org?format=json", {
   proxy: "socks5://myuser:mypass@127.0.0.1:1080"
@@ -53,7 +53,7 @@ console.log(data);
 ### POST Request with Custom Headers
 
 ```typescript
-import { fetch } from "bun-socks";
+import { fetch } from "netbun";
 
 const response = await fetch("https://example.com/api/data", {
   method: "POST",
