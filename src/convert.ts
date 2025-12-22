@@ -68,10 +68,6 @@ export function convert(
 				if (!skipInvalid) {
 					throw error;
 				}
-				// Skip invalid URLs silently
-				console.warn(
-					`Skipping invalid proxy URL: ${url} - ${error instanceof Error ? error.message : String(error)}`,
-				);
 			}
 		}
 
