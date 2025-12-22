@@ -24,6 +24,7 @@ While Bun's native `fetch` supports HTTP proxies, it does not currently support 
 -   🌐 **HTTPS Support**: Manually upgrades raw TCP sockets to TLS for secure connections.
 -   📦 **Native Experience**: API mimics the standard `fetch` exactly.
 -   ⚡ **Streaming**: Supports chunked transfer encoding and binary responses.
+-   🔄 **Proxy URL Converter**: Converts between various proxy URL formats (colon-separated, inverted, IPv6).
 
 ## Installation
 
@@ -91,6 +92,57 @@ A custom fetch function that supports SOCKS5 proxies via the `proxy` option.
 -   **Throws**: Errors for invalid proxy URLs or connection failures.
 
 If no `proxy` is provided, it falls back to the native `globalThis.fetch`.
+
+### `convert(proxyUrl: string | string[], skipInvalid?: boolean): string | string[]`
+
+Converts proxy URL(s) from various non-standard formats to the standard proxy URL format.
+
+-   **Parameters**:
+    -   `proxyUrl`: Single proxy URL string or array of proxy URLs in any supported format.
+    -   `skipInvalid`: (Optional) If `true` and array is passed, skips invalid URLs instead of throwing errors. Default: `false`.
+-   **Returns**: Standard proxy URL(s) in format `protocol://[user:pass@]host:port`.
+-   **Throws**: Error if the proxy URL format is invalid (unless `skipInvalid` is `true` for arrays).
+
+**Supported input formats**:
+-   Standard: `protocol://[user:pass@]host:port`
+-   Colon-separated: `protocol://host:port:username:password`
+-   Inverted: `protocol://host:port@user:pass`
+-   Without protocol: `host:port:username:password` (defaults to `socks5`)
+-   IPv6: `[2001:db8::1]:1080` or `socks5://[2001:db8::1]:1080`
+
+**Supported protocols**: `socks5`, `socks4`, `http`, `https`
+
+```typescript
+import { convert } from 'netbun';
+
+// Convert single URL
+convert('proxy.example.com:1080:user:pass')
+// => 'socks5://user:pass@proxy.example.com:1080'
+
+// Convert inverted format
+convert('socks5://proxy.com:1080@admin:secret')
+// => 'socks5://admin:secret@proxy.com:1080'
+
+// Convert array of URLs
+convert([
+  'proxy1.com:1080:user:pass',
+  'http://proxy2.com:8080',
+  'socks5://user:pass@proxy3.com:1080'
+])
+// => [
+//   'socks5://user:pass@proxy1.com:1080',
+//   'http://proxy2.com:8080',
+//   'socks5://user:pass@proxy3.com:1080'
+// ]
+
+// IPv6 support
+convert('[2001:db8::1]:1080:user:pass')
+// => 'socks5://user:pass@[2001:db8::1]:1080'
+
+// Skip invalid URLs
+convert(['valid.com:1080', 'invalid', 'proxy.com:1080'], true)
+// => ['socks5://valid.com:1080', 'socks5://proxy.com:1080']
+```
 
 ## Configuration
 
