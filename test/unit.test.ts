@@ -20,6 +20,7 @@ describe("parseProxyUrl", () => {
 			port: 1080,
 			user: "user",
 			password: "pass",
+			protocol: "socks5",
 		});
 	});
 
@@ -30,6 +31,7 @@ describe("parseProxyUrl", () => {
 			port: 9050,
 			user: "",
 			password: "",
+			protocol: "socks5",
 		});
 	});
 
@@ -42,11 +44,34 @@ describe("parseProxyUrl", () => {
 			port: 1080,
 			user: "user",
 			password: "pass",
+			protocol: "socks5",
+		});
+	});
+
+	test("parses HTTP proxy URL", () => {
+		const result = internals.parseProxyUrl("http://127.0.0.1:8080");
+		expect(result).toEqual({
+			host: "127.0.0.1",
+			port: 8080,
+			user: "",
+			password: "",
+			protocol: "http",
+		});
+	});
+
+	test("parses HTTPS proxy URL", () => {
+		const result = internals.parseProxyUrl("https://proxy.example.com:3128");
+		expect(result).toEqual({
+			host: "proxy.example.com",
+			port: 3128,
+			user: "",
+			password: "",
+			protocol: "https",
 		});
 	});
 
 	test("throws on invalid protocol", () => {
-		expect(() => internals.parseProxyUrl("http://127.0.0.1:1080")).toThrow(
+		expect(() => internals.parseProxyUrl("ftp://127.0.0.1:1080")).toThrow(
 			"Unsupported proxy protocol",
 		);
 	});
