@@ -52,10 +52,7 @@ const PORT_REGEX = /^\d+$/;
  * ```
  */
 export function convert(proxyUrl: string, skipInvalid?: false): string;
-export function convert(
-	proxyUrl: string[],
-	skipInvalid?: boolean,
-): string[];
+export function convert(proxyUrl: string[], skipInvalid?: boolean): string[];
 export function convert(
 	proxyUrl: string | string[],
 	skipInvalid = false,
@@ -89,8 +86,6 @@ export function convertLine(proxyUrl: string): string {
 	if (!proxyUrl) {
 		throw new Error("Proxy URL cannot be empty");
 	}
-
-	const len = proxyUrl.length;
 
 	// Extract protocol if present
 	let protocol = "socks5";
@@ -183,9 +178,7 @@ export function convertLine(proxyUrl: string): string {
 				if (colonPos === -1) {
 					// No password, just username
 					const needsEncode = NEEDS_ENCODING_REGEX.test(userPass);
-					const encoded = needsEncode
-						? encodeURIComponent(userPass)
-						: userPass;
+					const encoded = needsEncode ? encodeURIComponent(userPass) : userPass;
 					return `${protocol}://${encoded}@${hostPort}`;
 				}
 
