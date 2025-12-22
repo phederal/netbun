@@ -33,7 +33,9 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 		const ipService = 'https://api64.ipify.org?format=json';
 
 		// 1. Local IP
-		const localRes = await fetch(ipService, { tls: { rejectUnauthorized: false } });
+		const localRes = await fetch(ipService, {
+			tls: { rejectUnauthorized: false },
+		});
 		const localJson = await localRes.json();
 
 		// 2. Proxy IP
@@ -63,7 +65,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 
 		const res = await socksFetch('https://postman-echo.com/get', {
 			proxy: PROXY_URL,
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 		const data = await res.json();
 
@@ -81,7 +83,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 			body: JSON.stringify(payload),
 			headers: { 'Content-Type': 'application/json' },
 			proxy: PROXY_URL,
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 
 		const data = await res.json();
@@ -103,7 +105,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 				'User-Agent': 'Bun-Socks-Client',
 			},
 			proxy: PROXY_URL,
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 
 		const data = await res.json();
@@ -137,7 +139,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 		expect(
 			socksFetch('http://detectportal.firefox.com/success.txt', {
 				proxy: invalidProxy,
-				tls: { rejectUnauthorized: false }
+				tls: { rejectUnauthorized: false },
 			})
 		).rejects.toThrow();
 	}, 15000);
@@ -150,7 +152,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 		try {
 			await socksFetch('http://detectportal.firefox.com/success.txt', {
 				proxy: httpProxy,
-				tls: { rejectUnauthorized: false }
+				tls: { rejectUnauthorized: false },
 			});
 		} catch (err) {
 			// Expected to fail since proxy doesn't exist, but shouldn't be our error
@@ -170,7 +172,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 			socksFetch('https://postman-echo.com/delay/5', {
 				proxy: PROXY_URL,
 				signal: controller.signal,
-				tls: { rejectUnauthorized: false }
+				tls: { rejectUnauthorized: false },
 			})
 		).rejects.toThrow(/abort/i);
 	});
@@ -187,7 +189,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 			socksFetch('https://postman-echo.com/get', {
 				proxy: PROXY_URL,
 				signal: controller.signal,
-				tls: { rejectUnauthorized: false }
+				tls: { rejectUnauthorized: false },
 			})
 		).rejects.toThrow('Custom abort reason');
 	});
@@ -201,7 +203,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 		const promise = socksFetch('https://postman-echo.com/delay/3', {
 			proxy: PROXY_URL,
 			signal: controller.signal,
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 
 		setTimeout(() => controller.abort(), 100);
@@ -217,7 +219,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 				url: PROXY_URL,
 				resolveDnsLocally: false,
 			},
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 
 		expect(res.status).toBe(200);
@@ -230,7 +232,7 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 
 		const res = await socksFetch('https://postman-echo.com/get', {
 			proxy: { url: PROXY_URL, resolveDnsLocally: true },
-			tls: { rejectUnauthorized: false }
+			tls: { rejectUnauthorized: false },
 		});
 
 		expect(res.status).toBe(200);

@@ -471,7 +471,14 @@ export async function fetch(
 
 			let finalBody: Uint8Array = new Uint8Array(rawBody);
 
-			// Handle content decompression first
+			// Handle transfer encoding FIRST (before content encoding)
+			// This is the correct order per HTTP spec
+			const transferEncoding = headers.get("transfer-encoding");
+			if (transferEncoding?.includes("chunked")) {
+				finalBody = decodeChunked(Buffer.from(finalBody));
+			}
+
+			// Handle content decompression SECOND (after transfer encoding)
 			const contentEncoding = headers.get("content-encoding");
 			if (contentEncoding) {
 				const encodings = contentEncoding.split(",").map((e) => e.trim());
@@ -540,11 +547,6 @@ export async function fetch(
 						headers.set("content-length", finalBody.byteLength.toString());
 					}
 				}
-			}
-
-			const transferEncoding = headers.get("transfer-encoding");
-			if (transferEncoding?.includes("chunked")) {
-				finalBody = decodeChunked(Buffer.from(finalBody));
 			}
 
 			resolve(
