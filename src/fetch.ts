@@ -276,9 +276,148 @@ export function decodeChunked(buffer: Uint8Array): Uint8Array {
 }
 
 /**
+ * Handle HTTP redirects according to RFC 7231
+ *
+ * IMPORTANT: When using SOCKS proxy, each redirect creates a new connection to the proxy
+ * and performs a full SOCKS5 handshake (including auth if configured). This means:
+ * - Each redirect adds ~1-3 seconds of latency (TCP connect + SOCKS handshake + TLS handshake)
+ * - Multiple redirects (5+) can be slow and may timeout
+ * - The proxy settings are preserved across all redirects for security
+ *
+ * Security features:
+ * - Sensitive headers (authorization, cookie, proxy-authorization) are removed on cross-origin redirects
+ * - Referer header is automatically added
+ * - Proxy settings are preserved to ensure all requests go through the same proxy
+ */
+export async function handleRedirects(
+	input: string | URL | Request,
+	init: BunFetchRequestInit & { proxy?: { resolveDnsLocally?: boolean } },
+	maxRedirects: number = 20,
+	currentRedirects: number = 0,
+): Promise<Response> {
+	// Make initial request
+	let response: Response;
+	try {
+		response = await fetchInternal(input, init || {});
+	} catch (error: any) {
+		// Handle AbortError with clear message
+		if (error.name === 'AbortError' || error.code === 20) {
+			throw new Error(`Request aborted${currentRedirects > 0 ? ` after ${currentRedirects} redirect(s)` : ''}: ${error.message || 'The operation was aborted'}`);
+		}
+		// Re-throw other errors
+		throw error;
+	}
+
+	// Check if it's a redirect
+	const status = response.status;
+	const location = response.headers.get('location');
+
+	// No redirect or max redirects reached
+	if (!status || !location || status < 300 || status >= 400 || currentRedirects >= maxRedirects) {
+		return response;
+	}
+
+	// Check redirect status codes that should be followed
+	const redirectStatuses = [301, 302, 303, 307, 308];
+	if (!redirectStatuses.includes(status)) {
+		return response;
+	}
+
+	// Determine new request method
+	const originalMethod = init?.method || 'GET';
+	let newMethod: string;
+	let shouldRemoveBody = false;
+
+	// 303 always converts to GET
+	// 301, 302 convert POST to GET for historical reasons
+	if (status === 303 || ((status === 301 || status === 302) && originalMethod !== 'GET' && originalMethod !== 'HEAD')) {
+		newMethod = 'GET';
+		shouldRemoveBody = true;
+	} else {
+		// 307, 308 preserve method
+		newMethod = originalMethod;
+	}
+
+	// Resolve redirect URL and check if it's cross-origin
+	const originalUrl = new URL(input instanceof Request ? input.url : input.toString());
+	let redirectUrl: string;
+
+	if (location.startsWith('http://') || location.startsWith('https://')) {
+		// Absolute URL
+		redirectUrl = location;
+	} else {
+		// Relative URL - resolve against original request URL
+		redirectUrl = new URL(location, originalUrl).toString();
+	}
+
+	const newUrl = new URL(redirectUrl);
+	const isCrossOrigin = originalUrl.origin !== newUrl.origin;
+
+	// Copy headers and handle sensitive headers for cross-origin redirects
+	const newHeaders = new Headers(init?.headers);
+
+	// Remove sensitive headers on cross-origin redirects for security
+	if (isCrossOrigin) {
+		newHeaders.delete('authorization');
+		newHeaders.delete('cookie');
+		newHeaders.delete('proxy-authorization');
+	}
+
+	// Set Referer header if not already set
+	if (!newHeaders.has('referer')) {
+		newHeaders.set('referer', originalUrl.href);
+	}
+
+	// Prepare new request without mutating original init
+	// Important: preserve proxy settings for security (all requests must go through same proxy)
+	const newInit = {
+		...init,
+		method: newMethod,
+		body: shouldRemoveBody ? undefined : init?.body,
+		headers: newHeaders,
+		// Preserve proxy settings
+		proxy: init?.proxy,
+	};
+
+	// Follow redirect recursively
+	return handleRedirects(redirectUrl, newInit, maxRedirects, currentRedirects + 1);
+}
+
+
+/**
  * Custom Fetch implementation that supports SOCKS5 via the 'proxy' init option.
  */
 export async function fetch(
+	input: string | URL | Request, // url
+	init?: any, // bun fetch opts with redirect
+): Promise<Response> {
+	const redirectMode = init?.redirect || 'follow';
+	
+	// Handle different redirect modes
+	if (redirectMode === 'manual') {
+		// Don't follow redirects automatically
+		return fetchInternal(input, init || {});
+	} else if (redirectMode === 'error') {
+		// Throw error on redirect
+		const response = await fetchInternal(input, init || {});
+		const status = response.status;
+		const location = response.headers.get('location');
+		
+		if (status && status >= 300 && status < 400 && location) {
+			throw new Error(`Redirect to ${location} requested but redirect mode is 'error'`);
+}
+		
+		return response;
+	} else {
+		// Follow redirects (default behavior)
+		return handleRedirects(input, init || {});
+	}
+}
+
+/**
+ * Internal fetch implementation without redirect handling
+ */
+export async function fetchInternal(
 	input: string | URL | Request, // url
 	init?: BunFetchRequestInit & { proxy?: { resolveDnsLocally?: boolean } }, // bun fetch opts
 ): Promise<Response> {
