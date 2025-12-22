@@ -535,10 +535,10 @@ export async function fetchInternal(
 		headerString += `Host: ${hostHeader}\r\n`;
 		headerString += `Connection: close\r\n`;
 
-		// Set default User-Agent if not provided
-		if (!req.headers.has("user-agent")) {
-			headerString += `User-Agent: Bun/1.3.5\r\n`;
-		}
+		// Set default User-Agent if not provided // disabled
+		// if (!req.headers.has("user-agent")) {
+		// 	headerString += `User-Agent: Bun/1.3.5\r\n`;
+		// }
 
 		// Set default Accept headers if not provided
 		if (!req.headers.has("accept")) {
