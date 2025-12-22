@@ -1,6 +1,7 @@
 import * as dns from "node:dns";
 import * as net from "node:net";
 import * as tls from "node:tls";
+import * as zlib from "node:zlib";
 
 // save original fetch
 const _fetch = globalThis.fetch;
@@ -16,13 +17,13 @@ export function parseProxyUrl(proxyUrl: string) {
 	try {
 		const parsed = new URL(proxyUrl);
 
-		// Validate Protocol - 's' и '5'
-		if (
-			parsed.protocol.charCodeAt(0) !== 0x73 ||
-			parsed.protocol.charCodeAt(5) !== 0x35
-		) {
+		// Validate Protocol - support socks5, socks4, http, https
+		const protocol = parsed.protocol;
+		const validProtocols = ['socks5:', 'socks4:', 'http:', 'https:'];
+		
+		if (!validProtocols.includes(protocol)) {
 			throw new Error(
-				`Unsupported proxy protocol: ${parsed.protocol}. Only socks5: is supported.`,
+				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, socks4, http, https.`,
 			);
 		}
 
@@ -38,9 +39,15 @@ export function parseProxyUrl(proxyUrl: string) {
 		}
 
 		// Extract Port
-		const port = parsed.port ? parseInt(parsed.port, 10) : 1080;
+		// Extract Port - default ports based on protocol
+		let defaultPort = 1080; // SOCKS default
+		if (protocol === 'http:' || protocol === 'https:') {
+			defaultPort = 8080; // HTTP default
+		}
+		
+		const port = parsed.port ? parseInt(parsed.port, 10) : defaultPort;
 
-		return { host, port, user, password };
+		return { host, port, user, password, protocol: protocol.slice(0, -1) }; // remove ':' from protocol
 	} catch (err) {
 		throw new Error(
 			`Invalid proxy URL: ${proxyUrl}. Error: ${(err as Error).message}`,
@@ -58,6 +65,7 @@ export async function connectSocks5(
 	useTLS = false,
 	resolveDnsLocally = false,
 	signal?: AbortSignal,
+	tlsOptions?: tls.ConnectionOptions,
 ): Promise<net.Socket | tls.TLSSocket> {
 	const config = parseProxyUrl(proxyConfig);
 
@@ -164,7 +172,7 @@ export async function connectSocks5(
 						socket.removeAllListeners("timeout");
 
 						if (useTLS) {
-							const tlsSocket = tls.connect({ socket, servername: targetHost });
+							const tlsSocket = tls.connect({ socket, servername: targetHost, ...tlsOptions });
 							tlsSocket.once("secureConnect", () => resolve(tlsSocket));
 							tlsSocket.once("error", reject);
 						} else {
@@ -216,15 +224,22 @@ export async function connectSocks5(
 	}
 }
 
-export function decodeChunked(buffer: Buffer): Uint8Array {
-	const chunks: Buffer[] = [];
+export function decodeChunked(buffer: Uint8Array): Uint8Array {
+	const chunks: Uint8Array[] = [];
 	let index = 0;
 
 	while (index < buffer.length) {
-		const lineEnd = buffer.indexOf("\r\n", index);
-		if (lineEnd === -1) break;
+		// Find \r\n sequence
+		let lineEnd = index;
+		while (lineEnd < buffer.length && buffer[lineEnd] !== 0x0d) { // \r
+			lineEnd++;
+		}
+		if (lineEnd >= buffer.length || buffer[lineEnd + 1] !== 0x0a) { // \n
+			break;
+		}
 
-		const sizeStr = buffer.toString("utf8", index, lineEnd);
+		const decoder = new TextDecoder();
+		const sizeStr = decoder.decode(buffer.subarray(index, lineEnd));
 		const size = parseInt(sizeStr, 16);
 
 		if (Number.isNaN(size)) {
@@ -242,7 +257,16 @@ export function decodeChunked(buffer: Buffer): Uint8Array {
 		index = dataEnd + 2;
 	}
 
-	return new Uint8Array(Buffer.concat(chunks));
+	// Concatenate all chunks efficiently
+	const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+	const result = new Uint8Array(totalLength);
+	let offset = 0;
+	for (const chunk of chunks) {
+		result.set(chunk, offset);
+		offset += chunk.length;
+	}
+
+	return result;
 }
 
 /**
@@ -256,9 +280,13 @@ export async function fetch(
 	let proxyUrl: string | undefined;
 
 	if (!init?.proxy) {
-		const envProxy = process.env.SOCKS5_PROXY || process.env.SOCKS_PROXY;
+		const envProxy = process.env.SOCKS5_PROXY || process.env.SOCKS_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
 		if (envProxy) {
 			proxyUrl = envProxy;
+			// Для HTTP/HTTPS прокси сразу делаем fallback
+			if (envProxy && (envProxy.charCodeAt(0) !== 0x73 && envProxy.charCodeAt(0) !== 0x68)) {
+				return _fetch(input, init);
+			}
 		} else {
 			return _fetch(input, init);
 		}
@@ -268,22 +296,29 @@ export async function fetch(
 
 	const url = proxyUrl;
 
-	// Быстрый early exit - не SOCKS прокси
-	if (!url || url.charCodeAt(0) !== 0x73) {
-		return _fetch(input, init);
+	// Быстрый early exit - не SOCKS прокси (http/https прокси поддерживает нативный fetch)
+	if (!url || (url.charCodeAt(0) !== 0x73 && url.charCodeAt(0) !== 0x68)) {
+		// Убираем proxy из init для нативного fetch
+		const { proxy: _, ...nativeInit } = init || {};
+		return _fetch(input, nativeInit);
 	}
 
 	// Fallback 2: Invalid proxy configuration string
 	try {
-		parseProxyUrl(url);
+		const parsed = parseProxyUrl(url);
+		// Если это HTTP/HTTPS прокси, используем нативный fetch без proxy опции
+		if (parsed.protocol === 'http' || parsed.protocol === 'https') {
+			const { proxy: _, ...nativeInit } = init || {};
+			return _fetch(input, nativeInit);
+		}
 	} catch (_err) {
 		console.warn(
 			`Invalid proxy configuration: "${url}". Falling back to native fetch.`,
 		);
 
 		// Fixed: Strip the 'proxy' property so native fetch doesn't error on the unsupported protocol
-		// const { proxy: _, ...nativeInit } = init || {}; // not for that case
-		return _fetch(input, init);
+		const { proxy: _, ...nativeInit } = init || {};
+		return _fetch(input, nativeInit);
 	}
 
 	// 1. Normalize Input using native Request
@@ -315,6 +350,7 @@ export async function fetch(
 		isHttps,
 		resolveDnsLocally,
 		init?.signal || undefined,
+		init?.tls as tls.ConnectionOptions,
 	);
 
 	return new Promise((resolve, reject) => {
@@ -346,13 +382,29 @@ export async function fetch(
 		headerString += `Host: ${hostHeader}\r\n`;
 		headerString += `Connection: close\r\n`;
 
+		// Set default User-Agent if not provided
+		if (!req.headers.has("user-agent")) {
+			headerString += `User-Agent: Bun/1.3.5\r\n`;
+		}
+
+		// Set default Accept headers if not provided
+		if (!req.headers.has("accept")) {
+			headerString += `Accept: */*\r\n`;
+		}
+
+		if (!req.headers.has("accept-encoding")) {
+			headerString += `Accept-Encoding: gzip, deflate, br, zstd\r\n`;
+		}
+
 		// Add Content-Length if body exists and header is missing
 		if (bodyUint8 && !req.headers.has("content-length")) {
 			req.headers.set("Content-Length", bodyUint8.byteLength.toString());
 		}
 
+		// Add all user-provided headers, excluding system-managed ones
 		req.headers.forEach((value, key) => {
 			const lowerKey = key.toLowerCase();
+			// Exclude host and connection (handled separately), but allow user-set user-agent, accept, etc.
 			if (lowerKey !== "host" && lowerKey !== "connection") {
 				headerString += `${key}: ${value}\r\n`;
 			}
@@ -405,9 +457,72 @@ export async function fetch(
 
 			let finalBody: Uint8Array = new Uint8Array(rawBody);
 
+			// Handle content decompression first
+			const contentEncoding = headers.get("content-encoding");
+			if (contentEncoding) {
+				const encodings = contentEncoding.split(",").map(e => e.trim());
+				
+				for (const encoding of encodings) {
+					if (encoding === "gzip") {
+						finalBody = Bun.gunzipSync(finalBody as any);
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "deflate") {
+						// For deflate, try both raw deflate and zlib formats
+						try {
+							// Try raw deflate first
+							const inflated = Bun.inflateSync(Buffer.from(finalBody));
+							finalBody = new Uint8Array(inflated);
+						} catch (_err) {
+							try {
+								// Try zlib format (with header) using inflateRaw
+								const buffer = Buffer.from(finalBody);
+								const inflated = zlib.inflateSync(buffer);
+								finalBody = new Uint8Array(inflated);
+							} catch (_err2) {
+								// Try as gzip
+								const buffer = Buffer.from(finalBody);
+								const inflated = Bun.gunzipSync(buffer as any);
+								finalBody = new Uint8Array(inflated);
+							}
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "br") {
+						// Brotli decompression using Node.js zlib
+						try {
+							const decompressed = zlib.brotliDecompressSync(Buffer.from(finalBody));
+							finalBody = new Uint8Array(decompressed);
+						} catch (err) {
+							throw new Error(`Brotli decompression failed: ${(err as Error).message}`);
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "zstd") {
+						// Zstd decompression using Bun's built-in support
+						try {
+							const decompressed = Bun.zstdDecompressSync(finalBody);
+							finalBody = new Uint8Array(decompressed);
+						} catch (err) {
+							throw new Error(`Zstd decompression failed: ${(err as Error).message}`);
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					}
+				}
+			}
+
 			const transferEncoding = headers.get("transfer-encoding");
 			if (transferEncoding?.includes("chunked")) {
-				finalBody = decodeChunked(rawBody);
+				finalBody = decodeChunked(Buffer.from(finalBody));
 			}
 
 			resolve(
