@@ -19,8 +19,8 @@ export function parseProxyUrl(proxyUrl: string) {
 
 		// Validate Protocol - support socks5, socks4, http, https
 		const protocol = parsed.protocol;
-		const validProtocols = ['socks5:', 'socks4:', 'http:', 'https:'];
-		
+		const validProtocols = ["socks5:", "socks4:", "http:", "https:"];
+
 		if (!validProtocols.includes(protocol)) {
 			throw new Error(
 				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, socks4, http, https.`,
@@ -41,10 +41,10 @@ export function parseProxyUrl(proxyUrl: string) {
 		// Extract Port
 		// Extract Port - default ports based on protocol
 		let defaultPort = 1080; // SOCKS default
-		if (protocol === 'http:' || protocol === 'https:') {
+		if (protocol === "http:" || protocol === "https:") {
 			defaultPort = 8080; // HTTP default
 		}
-		
+
 		const port = parsed.port ? parseInt(parsed.port, 10) : defaultPort;
 
 		return { host, port, user, password, protocol: protocol.slice(0, -1) }; // remove ':' from protocol
@@ -172,7 +172,11 @@ export async function connectSocks5(
 						socket.removeAllListeners("timeout");
 
 						if (useTLS) {
-							const tlsSocket = tls.connect({ socket, servername: targetHost, ...tlsOptions });
+							const tlsSocket = tls.connect({
+								socket,
+								servername: targetHost,
+								...tlsOptions,
+							});
 							tlsSocket.once("secureConnect", () => resolve(tlsSocket));
 							tlsSocket.once("error", reject);
 						} else {
@@ -231,10 +235,12 @@ export function decodeChunked(buffer: Uint8Array): Uint8Array {
 	while (index < buffer.length) {
 		// Find \r\n sequence
 		let lineEnd = index;
-		while (lineEnd < buffer.length && buffer[lineEnd] !== 0x0d) { // \r
+		while (lineEnd < buffer.length && buffer[lineEnd] !== 0x0d) {
+			// \r
 			lineEnd++;
 		}
-		if (lineEnd >= buffer.length || buffer[lineEnd + 1] !== 0x0a) { // \n
+		if (lineEnd >= buffer.length || buffer[lineEnd + 1] !== 0x0a) {
+			// \n
 			break;
 		}
 
@@ -280,11 +286,19 @@ export async function fetch(
 	let proxyUrl: string | undefined;
 
 	if (!init?.proxy) {
-		const envProxy = process.env.SOCKS5_PROXY || process.env.SOCKS_PROXY || process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+		const envProxy =
+			process.env.SOCKS5_PROXY ||
+			process.env.SOCKS_PROXY ||
+			process.env.HTTP_PROXY ||
+			process.env.HTTPS_PROXY;
 		if (envProxy) {
 			proxyUrl = envProxy;
 			// Для HTTP/HTTPS прокси сразу делаем fallback
-			if (envProxy && (envProxy.charCodeAt(0) !== 0x73 && envProxy.charCodeAt(0) !== 0x68)) {
+			if (
+				envProxy &&
+				envProxy.charCodeAt(0) !== 0x73 &&
+				envProxy.charCodeAt(0) !== 0x68
+			) {
 				return _fetch(input, init);
 			}
 		} else {
@@ -307,7 +321,7 @@ export async function fetch(
 	try {
 		const parsed = parseProxyUrl(url);
 		// Если это HTTP/HTTPS прокси, используем нативный fetch без proxy опции
-		if (parsed.protocol === 'http' || parsed.protocol === 'https') {
+		if (parsed.protocol === "http" || parsed.protocol === "https") {
 			const { proxy: _, ...nativeInit } = init || {};
 			return _fetch(input, nativeInit);
 		}
@@ -460,11 +474,12 @@ export async function fetch(
 			// Handle content decompression first
 			const contentEncoding = headers.get("content-encoding");
 			if (contentEncoding) {
-				const encodings = contentEncoding.split(",").map(e => e.trim());
-				
+				const encodings = contentEncoding.split(",").map((e) => e.trim());
+
 				for (const encoding of encodings) {
 					if (encoding === "gzip") {
-						finalBody = Bun.gunzipSync(finalBody as any);
+						// @ts-expect-error
+						finalBody = Bun.gunzipSync(finalBody);
 						// Remove content-encoding header after decompression
 						headers.delete("content-encoding");
 						// Update content-length to decompressed size
@@ -484,7 +499,8 @@ export async function fetch(
 							} catch (_err2) {
 								// Try as gzip
 								const buffer = Buffer.from(finalBody);
-								const inflated = Bun.gunzipSync(buffer as any);
+								// @ts-ignore
+								const inflated = Bun.gunzipSync(buffer);
 								finalBody = new Uint8Array(inflated);
 							}
 						}
@@ -495,10 +511,14 @@ export async function fetch(
 					} else if (encoding === "br") {
 						// Brotli decompression using Node.js zlib
 						try {
-							const decompressed = zlib.brotliDecompressSync(Buffer.from(finalBody));
+							const decompressed = zlib.brotliDecompressSync(
+								Buffer.from(finalBody),
+							);
 							finalBody = new Uint8Array(decompressed);
 						} catch (err) {
-							throw new Error(`Brotli decompression failed: ${(err as Error).message}`);
+							throw new Error(
+								`Brotli decompression failed: ${(err as Error).message}`,
+							);
 						}
 						// Remove content-encoding header after decompression
 						headers.delete("content-encoding");
@@ -510,7 +530,9 @@ export async function fetch(
 							const decompressed = Bun.zstdDecompressSync(finalBody);
 							finalBody = new Uint8Array(decompressed);
 						} catch (err) {
-							throw new Error(`Zstd decompression failed: ${(err as Error).message}`);
+							throw new Error(
+								`Zstd decompression failed: ${(err as Error).message}`,
+							);
 						}
 						// Remove content-encoding header after decompression
 						headers.delete("content-encoding");
