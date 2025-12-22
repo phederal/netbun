@@ -20,7 +20,7 @@
 		"bench": "bun run bench/proxy-bench.ts",
 		"test": "bun test --timeout 15000 ./test",
 		"lint": "biome check ./src --fix",
-		"prepublishOnly": "bun run build"
+		"prepublishOnly": "bun run lint && bun run test && bun run build"
 	},
 	"repository": {
 		"type": "git",
