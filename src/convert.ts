@@ -157,17 +157,8 @@ export function convertLine(proxyUrl: string): string {
 
 			if (isPort) {
 				// Standard format: protocol://user:pass@host:port - return as-is
-				const c0 = proxyUrl.charCodeAt(0);
-				if (c0 === 0x73) {
-					// socks5 or socks4
-					const c5 = proxyUrl.charCodeAt(5);
-					if (c5 === 0x35 || c5 === 0x34) {
-						return proxyUrl;
-					}
-				} else if (c0 === 0x68) {
-					// http or https
-					return proxyUrl;
-				}
+				// Protocol was already validated above, no need to re-check
+				return proxyUrl;
 			} else {
 				// Inverted format: protocol://host:port@user:pass
 				const hostPort = beforeAt;
