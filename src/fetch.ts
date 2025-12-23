@@ -479,9 +479,7 @@ export async function fetchInternal(
 	try {
 		url = convert(url);
 	} catch (_err) {
-		console.error(
-			`Error converting proxy URL ${proxyUrl}`,
-		)
+		console.error(`Error converting proxy URL ${proxyUrl}`);
 		// const { proxy: _, ...nativeInit } = init || {};
 		// return _fetch(input, nativeInit);
 	}
@@ -535,12 +533,12 @@ export async function fetchInternal(
 	const resolveDnsLocally = init?.proxy?.resolveDnsLocally ?? false;
 
 	let socket: net.Socket | tls.TLSSocket;
-	let connectionToReturn: PooledConnection | undefined;
+	let _connectionToReturn: PooledConnection | undefined;
 
 	if (existingConnection) {
 		// Use existing connection
 		socket = existingConnection.socket;
-		connectionToReturn = existingConnection;
+		_connectionToReturn = existingConnection;
 	} else {
 		// Try to get from pool first
 		const poolKey = `${url}:${urlObj.hostname}:${port}:${isHttps}`;
@@ -548,7 +546,7 @@ export async function fetchInternal(
 
 		if (pooledConnection) {
 			socket = pooledConnection.socket;
-			connectionToReturn = pooledConnection;
+			_connectionToReturn = pooledConnection;
 		} else {
 			// Create new connection
 			socket = await connectSocks5(
@@ -562,7 +560,7 @@ export async function fetchInternal(
 			);
 
 			// Prepare for potential pooling
-			connectionToReturn = {
+			_connectionToReturn = {
 				socket,
 				proxyUrl: url,
 				targetHost: urlObj.hostname,
@@ -574,262 +572,263 @@ export async function fetchInternal(
 		}
 	}
 
-		return new Promise((resolve, reject) => {
-			// AbortSignal handler for response phase
-			const abortHandler = () => {
+	return new Promise((resolve, reject) => {
+		// AbortSignal handler for response phase
+		const abortHandler = () => {
+			socket.destroy();
+			reject(init?.signal?.reason || new Error("Request aborted"));
+		};
+
+		if (init?.signal) {
+			if (init.signal.aborted) {
 				socket.destroy();
-				reject(init?.signal?.reason || new Error("Request aborted"));
-			};
+				reject(init.signal.reason || new Error("Request aborted"));
+				return;
+			}
+			init.signal.addEventListener("abort", abortHandler);
+		}
 
+		const cleanup = () => {
 			if (init?.signal) {
-				if (init.signal.aborted) {
-					socket.destroy();
-					reject(init.signal.reason || new Error("Request aborted"));
-					return;
-				}
-				init.signal.addEventListener("abort", abortHandler);
+				init.signal.removeEventListener("abort", abortHandler);
 			}
+		};
+		// 5. Construct Raw HTTP Request
+		const path = urlObj.pathname + urlObj.search;
+		const hostHeader = urlObj.hostname + (urlObj.port ? `:${urlObj.port}` : "");
 
-			const cleanup = () => {
-				if (init?.signal) {
-					init.signal.removeEventListener("abort", abortHandler);
-				}
-			};
-			// 5. Construct Raw HTTP Request
-			const path = urlObj.pathname + urlObj.search;
-			const hostHeader = urlObj.hostname + (urlObj.port ? `:${urlObj.port}` : "");
+		let headerString = `${req.method} ${path} HTTP/1.1\r\n`;
+		headerString += `Host: ${hostHeader}\r\n`;
+		headerString += `Connection: close\r\n`; // Force close to simplify parsing
 
-			let headerString = `${req.method} ${path} HTTP/1.1\r\n`;
-			headerString += `Host: ${hostHeader}\r\n`;
-			headerString += `Connection: close\r\n`; // Force close to simplify parsing
+		// Set default User-Agent if not provided // disabled
+		// if (!req.headers.has("user-agent")) {
+		// 	headerString += `User-Agent: Bun/1.3.5\r\n`;
+		// }
 
-			// Set default User-Agent if not provided // disabled
-			// if (!req.headers.has("user-agent")) {
-			// 	headerString += `User-Agent: Bun/1.3.5\r\n`;
-			// }
+		// Set default Accept headers if not provided
+		if (!req.headers.has("accept")) {
+			headerString += `Accept: */*\r\n`;
+		}
 
-			// Set default Accept headers if not provided
-			if (!req.headers.has("accept")) {
-				headerString += `Accept: */*\r\n`;
+		if (!req.headers.has("accept-encoding")) {
+			headerString += `Accept-Encoding: gzip, deflate, br, zstd\r\n`;
+		}
+
+		// Add Content-Length if body exists and header is missing
+		if (bodyUint8 && !req.headers.has("content-length")) {
+			req.headers.set("Content-Length", bodyUint8.byteLength.toString());
+		}
+
+		// Add all user-provided headers, excluding system-managed ones
+		req.headers.forEach((value, key) => {
+			const lowerKey = key.toLowerCase();
+			// Exclude host and connection (handled separately), but allow user-set user-agent, accept, etc.
+			if (lowerKey !== "host" && lowerKey !== "connection") {
+				headerString += `${key}: ${value}\r\n`;
 			}
+		});
 
-			if (!req.headers.has("accept-encoding")) {
-				headerString += `Accept-Encoding: gzip, deflate, br, zstd\r\n`;
-			}
+		headerString += `\r\n`;
 
-			// Add Content-Length if body exists and header is missing
-			if (bodyUint8 && !req.headers.has("content-length")) {
-				req.headers.set("Content-Length", bodyUint8.byteLength.toString());
-			}
+		// 6. Send Headers & Body
+		socket.write(headerString);
+		if (bodyUint8) {
+			socket.write(bodyUint8);
+		}
 
-			// Add all user-provided headers, excluding system-managed ones
-			req.headers.forEach((value, key) => {
-				const lowerKey = key.toLowerCase();
-				// Exclude host and connection (handled separately), but allow user-set user-agent, accept, etc.
-				if (lowerKey !== "host" && lowerKey !== "connection") {
-					headerString += `${key}: ${value}\r\n`;
-				}
-			});
+		// 7. Read Raw Response
+		let buffer = Buffer.alloc(0);
+		let headersParsed = false;
+		let contentLength: number | null = null;
+		let headers: Headers | null = null;
+		let status: number = 200;
+		let statusText: string = "";
+		let bodyStart = 0;
 
-			headerString += `\r\n`;
+		socket.on("data", (chunk) => {
+			buffer = Buffer.concat([buffer, chunk]);
 
-			// 6. Send Headers & Body
-			socket.write(headerString);
-			if (bodyUint8) {
-				socket.write(bodyUint8);
-			}
+			if (!headersParsed) {
+				const splitIndex = buffer.indexOf(HTTP_SEPARATOR);
+				if (splitIndex === -1) return; // Wait for more data
 
-			// 7. Read Raw Response
-			let buffer = Buffer.alloc(0);
-			let headersParsed = false;
-			let contentLength: number | null = null;
-			let headers: Headers | null = null;
-			let status: number = 200;
-			let statusText: string = "";
-			let bodyStart = 0;
+				const headerBuffer = buffer.subarray(0, splitIndex);
+				const headerText = headerBuffer.toString();
+				const lines = headerText.split("\r\n");
+				const [_, statusStr, ...statusTextParts] = lines[0].split(" ");
 
-			socket.on("data", (chunk) => {
-				buffer = Buffer.concat([buffer, chunk]);
+				status = parseInt(statusStr, 10) || 200;
+				statusText = statusTextParts.join(" ");
 
-				if (!headersParsed) {
-					const splitIndex = buffer.indexOf(HTTP_SEPARATOR);
-					if (splitIndex === -1) return; // Wait for more data
-
-					const headerBuffer = buffer.subarray(0, splitIndex);
-					const headerText = headerBuffer.toString();
-					const lines = headerText.split("\r\n");
-					const [_, statusStr, ...statusTextParts] = lines[0].split(" ");
-
-					status = parseInt(statusStr, 10) || 200;
-					statusText = statusTextParts.join(" ");
-
-					headers = new Headers();
-					for (let i = 1; i < lines.length; i++) {
-						const line = lines[i];
-						if (!line) continue;
-						const sep = line.indexOf(":");
-						if (sep > 0) {
-							const key = line.substring(0, sep).trim();
-							const val = line.substring(sep + 1).trim();
-							headers.append(key, val);
-						}
+				headers = new Headers();
+				for (let i = 1; i < lines.length; i++) {
+					const line = lines[i];
+					if (!line) continue;
+					const sep = line.indexOf(":");
+					if (sep > 0) {
+						const key = line.substring(0, sep).trim();
+						const val = line.substring(sep + 1).trim();
+						headers.append(key, val);
 					}
-
-					contentLength = headers.get("content-length") ? parseInt(headers.get("content-length")!, 10) : null;
-					bodyStart = splitIndex + 4;
-					headersParsed = true;
-
-					// Check if we have the full body
-					checkComplete();
-				} else {
-					checkComplete();
 				}
 
-				function checkComplete() {
-					if (!headers || !headersParsed) return;
+				const cl = headers.get("content-length");
+				contentLength = cl ? parseInt(cl, 10) : null;
+				bodyStart = splitIndex + 4;
+				headersParsed = true;
 
-					const transferEncoding = headers.get("transfer-encoding");
-					const bodyBuffer = buffer.subarray(bodyStart);
+				// Check if we have the full body
+				checkComplete();
+			} else {
+				checkComplete();
+			}
 
-					if (transferEncoding?.includes("chunked")) {
-						// For chunked, we need to decode and see if it's complete
-						try {
-							const decoded = decodeChunked(bodyBuffer);
-							// If decodeChunked doesn't throw, and we have all chunks, assume complete
-							// But to simplify, since we set Connection: close, wait for end
-						} catch {
-							// Incomplete chunked data
-							return;
-						}
-					} else if (contentLength !== null) {
-						if (bodyBuffer.length >= contentLength) {
-							processResponse();
-							return;
-						}
-					} else {
-						// No content-length, wait for end
+			function checkComplete() {
+				if (!headers || !headersParsed) return;
+
+				const transferEncoding = headers.get("transfer-encoding");
+				const bodyBuffer = buffer.subarray(bodyStart);
+
+				if (transferEncoding?.includes("chunked")) {
+					// For chunked, we need to decode and see if it's complete
+					try {
+						const _decoded = decodeChunked(bodyBuffer);
+						// If decodeChunked doesn't throw, and we have all chunks, assume complete
+						// But to simplify, since we set Connection: close, wait for end
+					} catch {
+						// Incomplete chunked data
 						return;
 					}
-				}
-			});
-
-			socket.on("end", () => {
-				cleanup();
-				if (!headersParsed) {
-					reject(new Error("Invalid HTTP response: No header separator found"));
+				} else if (contentLength !== null) {
+					if (bodyBuffer.length >= contentLength) {
+						processResponse();
+						return;
+					}
+				} else {
+					// No content-length, wait for end
 					return;
 				}
+			}
+		});
 
-				processResponse();
-			});
-
-			function processResponse() {
-				if (!headers) return;
-
-				let rawBody: Uint8Array = new Uint8Array(buffer.subarray(bodyStart));
-
-				// Handle transfer encoding FIRST (before content encoding)
-				const transferEncoding = headers.get("transfer-encoding");
-				if (transferEncoding?.includes("chunked")) {
-					rawBody = decodeChunked(rawBody);
-				}
-
-				let finalBody = new Uint8Array(rawBody);
-
-				// Handle content decompression SECOND (after transfer encoding)
-				const contentEncoding = headers.get("content-encoding");
-				if (contentEncoding) {
-					const encodings = contentEncoding.split(",").map((e) => e.trim());
-
-					for (const encoding of encodings) {
-						if (encoding === "gzip") {
-							finalBody = Bun.gunzipSync(finalBody);
-							// Remove content-encoding header after decompression
-							headers.delete("content-encoding");
-							// Update content-length to decompressed size
-							headers.set("content-length", finalBody.byteLength.toString());
-						} else if (encoding === "deflate") {
-							// For deflate, try both raw deflate and zlib formats
-							try {
-								// Try raw deflate first
-								const inflated = Bun.inflateSync(Buffer.from(finalBody));
-								finalBody = new Uint8Array(inflated);
-							} catch (_err) {
-								try {
-									// Try zlib format (with header) using inflateRaw
-									const buffer = Buffer.from(finalBody);
-									const inflated = zlib.inflateSync(buffer);
-									finalBody = new Uint8Array(inflated);
-								} catch (_err2) {
-									// Try as gzip
-									const buffer = Buffer.from(finalBody);
-									const inflated = Bun.gunzipSync(buffer);
-									finalBody = new Uint8Array(inflated);
-								}
-							}
-							// Remove content-encoding header after decompression
-							headers.delete("content-encoding");
-							// Update content-length to decompressed size
-							headers.set("content-length", finalBody.byteLength.toString());
-						} else if (encoding === "br") {
-							// Brotli decompression using Node.js zlib
-							try {
-								const decompressed = zlib.brotliDecompressSync(
-									Buffer.from(finalBody),
-								);
-								finalBody = new Uint8Array(decompressed);
-							} catch (err) {
-								throw new Error(
-									`Brotli decompression failed: ${(err as Error).message}`,
-								);
-							}
-							// Remove content-encoding header after decompression
-							headers.delete("content-encoding");
-							// Update content-length to decompressed size
-							headers.set("content-length", finalBody.byteLength.toString());
-						} else if (encoding === "zstd") {
-							// Zstd decompression using Bun's built-in support
-							try {
-								const decompressed = Bun.zstdDecompressSync(finalBody);
-								finalBody = new Uint8Array(decompressed);
-							} catch (err) {
-								throw new Error(
-									`Zstd decompression failed: ${(err as Error).message}`,
-								);
-							}
-							// Remove content-encoding header after decompression
-							headers.delete("content-encoding");
-							// Update content-length to decompressed size
-							headers.set("content-length", finalBody.byteLength.toString());
-						}
-					}
-				}
-
-				resolve(
-					new Response(finalBody, {
-						status,
-						statusText,
-						headers,
-					}),
-				);
-
-				// Since we set Connection: close, don't pool
-				// Return connection to pool if it was pooled (not from existingConnection)
-				// if (connectionToReturn && !existingConnection) {
-				// 	const poolKey = `${url}:${urlObj.hostname}:${port}:${isHttps}`;
-				// 	globalConnectionPool
-				// 		.releaseConnection(poolKey, connectionToReturn)
-				// 		.catch((err) => {
-				// 			console.warn("Failed to release connection to pool:", err);
-				// 		});
-				// }
+		socket.on("end", () => {
+			cleanup();
+			if (!headersParsed) {
+				reject(new Error("Invalid HTTP response: No header separator found"));
+				return;
 			}
 
-			socket.on("error", (err) => {
-				cleanup();
-				reject(err);
-			});
+			processResponse();
 		});
+
+		function processResponse() {
+			if (!headers) return;
+
+			let rawBody: Uint8Array = new Uint8Array(buffer.subarray(bodyStart));
+
+			// Handle transfer encoding FIRST (before content encoding)
+			const transferEncoding = headers.get("transfer-encoding");
+			if (transferEncoding?.includes("chunked")) {
+				rawBody = decodeChunked(rawBody);
+			}
+
+			let finalBody = new Uint8Array(rawBody);
+
+			// Handle content decompression SECOND (after transfer encoding)
+			const contentEncoding = headers.get("content-encoding");
+			if (contentEncoding) {
+				const encodings = contentEncoding.split(",").map((e) => e.trim());
+
+				for (const encoding of encodings) {
+					if (encoding === "gzip") {
+						finalBody = Bun.gunzipSync(finalBody);
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "deflate") {
+						// For deflate, try both raw deflate and zlib formats
+						try {
+							// Try raw deflate first
+							const inflated = Bun.inflateSync(Buffer.from(finalBody));
+							finalBody = new Uint8Array(inflated);
+						} catch (_err) {
+							try {
+								// Try zlib format (with header) using inflateRaw
+								const buffer = Buffer.from(finalBody);
+								const inflated = zlib.inflateSync(buffer);
+								finalBody = new Uint8Array(inflated);
+							} catch (_err2) {
+								// Try as gzip
+								const buffer = Buffer.from(finalBody);
+								const inflated = Bun.gunzipSync(buffer);
+								finalBody = new Uint8Array(inflated);
+							}
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "br") {
+						// Brotli decompression using Node.js zlib
+						try {
+							const decompressed = zlib.brotliDecompressSync(
+								Buffer.from(finalBody),
+							);
+							finalBody = new Uint8Array(decompressed);
+						} catch (err) {
+							throw new Error(
+								`Brotli decompression failed: ${(err as Error).message}`,
+							);
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					} else if (encoding === "zstd") {
+						// Zstd decompression using Bun's built-in support
+						try {
+							const decompressed = Bun.zstdDecompressSync(finalBody);
+							finalBody = new Uint8Array(decompressed);
+						} catch (err) {
+							throw new Error(
+								`Zstd decompression failed: ${(err as Error).message}`,
+							);
+						}
+						// Remove content-encoding header after decompression
+						headers.delete("content-encoding");
+						// Update content-length to decompressed size
+						headers.set("content-length", finalBody.byteLength.toString());
+					}
+				}
+			}
+
+			resolve(
+				new Response(finalBody, {
+					status,
+					statusText,
+					headers,
+				}),
+			);
+
+			// Since we set Connection: close, don't pool
+			// Return connection to pool if it was pooled (not from existingConnection)
+			// if (connectionToReturn && !existingConnection) {
+			// 	const poolKey = `${url}:${urlObj.hostname}:${port}:${isHttps}`;
+			// 	globalConnectionPool
+			// 		.releaseConnection(poolKey, connectionToReturn)
+			// 		.catch((err) => {
+			// 			console.warn("Failed to release connection to pool:", err);
+			// 		});
+			// }
+		}
+
+		socket.on("error", (err) => {
+			cleanup();
+			reject(err);
+		});
+	});
 }
 
 /**
