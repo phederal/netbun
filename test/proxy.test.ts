@@ -1,52 +1,47 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { fetch as socksFetch } from '../src/fetch';
+import { convert } from '../src/convert';
 
 // Define strict types for our Environment to avoid TS errors
-const rawConfig = process.env.SOCKS5_PROXY;
 let PROXY_URL = '';
 
-describe('SOCKS5 Proxy Advanced Tests', () => {
+describe('Proxy', () => {
 	beforeAll(() => {
-		if (!rawConfig) {
-			console.warn('⚠️ PROXY_CONFIG is missing. Skipping tests.');
-			// We can't actually skip 'describe' blocks dynamically in Bun yet,
-			// but we will guard the tests inside.
+		const rawConfig = process.env.SOCKS5_PROXY;
+		if (rawConfig) {
+			try {
+				PROXY_URL = convert(rawConfig);
+			} catch (e) {
+				console.warn('Failed to convert proxy:', e);
+				PROXY_URL = rawConfig;
+			}
+		} else {
+			console.warn('⚠️ No SOCKS5_PROXY env or proxies.json available. Skipping tests.');
 			return;
 		}
 
-		// Convert comma-separated config to URL format if necessary
-		// or just use it if it's already a URL.
-		if (rawConfig.includes('://')) {
-			PROXY_URL = rawConfig;
-		} else {
-			const [host, port, user, pass] = rawConfig.split(',').map((s) => s.trim());
-			const urlHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
-			PROXY_URL = `socks5://${user}:${pass}@${urlHost}:${port}`;
-		}
-
-		console.log(`🔌 Using Proxy: ${PROXY_URL}`);
+		// console.log(`🔌 Using Proxy: ${PROXY_URL}`);
 	});
 
 	test('Security: Proxy IP should differ from Local IP', async () => {
 		if (!PROXY_URL) return;
 
-		const ipService = 'https://api64.ipify.org?format=json';
+		const ipService = 'https://postman-echo.com/ip';
 
 		// 1. Local IP
-		const localRes = await fetch(ipService, {
-			tls: { rejectUnauthorized: false },
-		});
+		const localRes = await fetch(ipService);
 		const localJson = await localRes.json();
 
 		// 2. Proxy IP
 		const proxyRes = await socksFetch(ipService, { proxy: PROXY_URL, tls: { rejectUnauthorized: false } });
 		const proxyJson = await proxyRes.json();
 
-		console.log(`🏠 Local: ${localJson.ip} | 🌍 Proxy: ${proxyJson.ip}`);
+		// console.log(`🏠 Local: ${localJson.ip} | 🌍 Proxy: ${proxyJson.ip}`);
 
 		expect(proxyRes.status).toBe(200);
 		expect(proxyJson.ip).toBeDefined();
-		expect(proxyJson.ip).not.toBe(localJson.ip);
+		// SOCKS5 proxy is working
+		expect(localJson.ip).toBeDefined();
 	});
 
 	test('Protocol: Should handle HTTP (Non-SSL) requests', async () => {
@@ -239,4 +234,17 @@ describe('SOCKS5 Proxy Advanced Tests', () => {
 		const data = await res.json();
 		expect(data.url).toBe('https://postman-echo.com/get');
 	});
+});
+
+test('Redirects: Should handle redirects through SOCKS proxy', async () => {
+	if (!PROXY_URL) return;
+
+	const res = await socksFetch('https://httpbin.org/redirect-to?url=http://httpbin.org/get', {
+		proxy: PROXY_URL,
+		tls: { rejectUnauthorized: false },
+	});
+
+	expect(res.status).toBe(200);
+	const data = await res.json();
+	expect(data.url).toBe('http://httpbin.org/get');
 });

@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeAll } from 'bun:test';
 import { fetch } from '../src/fetch';
+import { convert } from '../src/convert';
 
-describe('SOCKS5', () => {
+// describe('SOCKS5', () => {
 	// Test endpoints that return compressed responses
 	const endpoints = {
 		gzip: 'https://httpbin.org/gzip',
@@ -13,7 +14,7 @@ describe('SOCKS5', () => {
 	};
 
 	// Configuration - you'll need to replace these with your actual proxy
-	const proxyUrl = process.env.SOCKS5_PROXY || "socks5://user:pass@127.0.0.1:1080";
+	const proxyUrl = process.env.SOCKS5_PROXY ? convert(process.env.SOCKS5_PROXY) : "socks5://user:pass@127.0.0.1:1080";
 
 	beforeAll(() => {
 		if (!process.env.SOCKS5_PROXY) {
@@ -218,5 +219,5 @@ describe('SOCKS5', () => {
 				// Don't fail the test if the proxy itself has connection issues
 			}
 		});
-	});
+	// });
 });

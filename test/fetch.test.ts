@@ -10,13 +10,9 @@ const TEST_PROXIES: string[] = [
 	// Add your SOCKS5 proxies here for testing
 	// "socks5://user:pass@127.0.0.1:1080",
 	// "socks5://127.0.0.1:1080"
-	'socks5://107.152.98.5:4145',
-	'socks5://34.124.190.108:8080',
-	'http://190.12.150.244:999',
-	'http://190.242.157.215:8080',
 ];
 
-describe('Fetch API Comprehensive Tests', () => {
+describe.only('Fetch API Comprehensive Tests', () => {
 	// Helper function to create test with optional proxy
 	async function testFetch(path: string, options?: RequestInit, useProxy = false) {
 		let url = `${TEST_BASE_URL}${path}`;
@@ -45,7 +41,7 @@ describe('Fetch API Comprehensive Tests', () => {
 		return fetch(url, finalOptions);
 	}
 
-	describe('HTTP Methods', () => {
+	describe.only('HTTP Methods', () => {
 		test('GET request', async () => {
 			const response = await testFetch('/anything');
 			expect(response.ok).toBe(true);
