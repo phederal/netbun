@@ -4,27 +4,34 @@
 [![npm version](https://badge.fury.io/js/netbun.svg)](https://badge.fury.io/js/netbun)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A lightweight, zero-dependency SOCKS5 proxy client specifically designed for [Bun](https://bun.sh).
+A high-performance, zero-dependency fetch implementation for [Bun](https://bun.sh) with comprehensive proxy support, including SOCKS5, SOCKS4, HTTP, and HTTPS proxies. Features automatic decompression, redirect handling, connection pooling, and more.
 
-While Bun's native `fetch` supports HTTP proxies, it does not currently support SOCKS5. This library bridges that gap by implementing a custom `fetch` wrapper that handles SOCKS5 handshakes (RFC 1928) and manually upgrades sockets to TLS for HTTPS requests.
+This library extends Bun's native capabilities by providing a drop-in replacement for `fetch` that supports various proxy protocols and advanced networking features not available in the standard implementation.
 
 ## Table of Contents
 
 -   [Features](#features)
 -   [Installation](#installation)
 -   [Usage](#usage)
+-   [Examples](#examples)
 -   [API](#api)
 -   [Configuration](#configuration)
+-   [Supported Formats](#supported-formats)
 -   [License](#license)
 
 ## Features
 
--   🚀 **Zero Dependencies**: Uses Bun/Node native `net` and `tls` modules.
--   🔒 **SOCKS5 Support**: Full handshake with Username/Password authentication (RFC 1929).
--   🌐 **HTTPS Support**: Manually upgrades raw TCP sockets to TLS for secure connections.
--   📦 **Native Experience**: API mimics the standard `fetch` exactly.
--   ⚡ **Streaming**: Supports chunked transfer encoding and binary responses.
--   🔄 **Proxy URL Converter**: Converts between various proxy URL formats (colon-separated, inverted, IPv6).
+-   🚀 **Zero Dependencies**: Uses only Bun/Node native modules (`net`, `tls`, `zlib`).
+-   🧦 **Comprehensive Proxy Support**: SOCKS5, SOCKS4, HTTP, and HTTPS proxies with automatic fallback.
+-   🔒 **SOCKS5 & SOCKS4**: Full handshake with Username/Password authentication (RFC 1928/1929).
+-   🌐 **HTTPS/TLS**: Automatic socket upgrade to TLS for secure connections.
+-   📦 **Native Fetch API**: Drop-in replacement with identical interface to standard `fetch`.
+-   ⚡ **High Performance**: Connection pooling, streaming responses, and optimized parsing.
+-   🔄 **Decompression**: Supports gzip, deflate, brotli, and zstd encodings.
+-   ↩️ **Redirect Handling**: Full support for follow, manual, and error redirect modes.
+-   🔧 **Proxy URL Converter**: Converts between various non-standard proxy formats.
+-   🌍 **IPv6 Support**: Full IPv6 address handling in proxy configurations.
+-   🛡️ **Security**: Proper header preservation, authentication, and connection management.
 
 ## Installation
 
@@ -34,7 +41,24 @@ bun add netbun
 
 ## Usage
 
-Import `fetch` from the library and use the `proxy` option in the init object. The proxy connection string must follow the format: `socks5://user:pass@host:port`.
+Import `fetch` from the library and use the `proxy` option in the init object. The library supports various proxy protocols and automatically handles connection details.
+
+```typescript
+import { fetch } from 'netbun';
+
+// Use SOCKS5 proxy
+const response = await fetch('https://api.example.com', {
+  proxy: 'socks5://user:pass@proxy.example.com:1080'
+});
+
+// Use HTTP proxy
+const response2 = await fetch('https://api.example.com', {
+  proxy: 'http://user:pass@proxy.example.com:8080'
+});
+
+// No proxy - falls back to native fetch
+const response3 = await fetch('https://api.example.com');
+```
 
 ## Examples
 
@@ -67,29 +91,76 @@ const response = await fetch('https://example.com/api/data', {
 });
 ```
 
-### Using alongside standard Fetch
-
-If you omit the `proxy` option, the library falls back to the native global `fetch`, so you can use it as a drop-in replacement throughout your application.
+### Redirect Handling
 
 ```typescript
-// Uses SOCKS5 proxy
+import { fetch } from 'netbun';
+
+// Follow redirects (default)
+const response = await fetch('https://httpbin.org/redirect/3', {
+	proxy: 'socks5://user:pass@proxy.com:1080'
+});
+
+// Error on redirect
+try {
+	await fetch('https://httpbin.org/redirect/1', {
+		proxy: 'socks5://user:pass@proxy.com:1080',
+		redirect: 'error'
+	});
+} catch (error) {
+	console.log('Redirect blocked:', error.message);
+}
+```
+
+### Using Different Proxy Types
+
+```typescript
+import { fetch } from 'netbun';
+
+// SOCKS5 proxy
+await fetch('https://example.com', { proxy: 'socks5://user:pass@host:1080' });
+
+// SOCKS4 proxy
+await fetch('https://example.com', { proxy: 'socks4://host:1080' });
+
+// HTTP proxy
+await fetch('https://example.com', { proxy: 'http://user:pass@host:8080' });
+
+// HTTPS proxy
+await fetch('https://example.com', { proxy: 'https://user:pass@host:8080' });
+```
+
+### Drop-in Replacement
+
+The library falls back to native `fetch` when no proxy is specified, making it safe to use as a global replacement.
+
+```typescript
+// Uses proxy
 await fetch('https://secret-service.com', { proxy: 'socks5://...' });
 
-// Uses standard internet connection (native fetch)
+// Uses standard connection
 await fetch('https://google.com');
 ```
 
 ## API
 
-### `fetch(input: string | URL | Request, init?: RequestInit & { proxy?: string }): Promise<Response>`
+### `fetch(input: string | URL | Request, init?: RequestInit & { proxy?: string | { url: string; resolveDnsLocally?: boolean } }): Promise<Response>`
 
-A custom fetch function that supports SOCKS5 proxies via the `proxy` option.
+An enhanced fetch function with comprehensive proxy support and advanced networking features.
 
 -   **Parameters**:
-    -   `input`: The URL or Request object to fetch.
-    -   `init`: Optional init object, extended with `proxy` string for SOCKS5 URL.
+    -   `input`: The URL, Request object, or string to fetch.
+    -   `init`: Optional init object with standard fetch options plus:
+        -   `proxy`: Proxy configuration string or object
+        -   `redirect`: Redirect handling mode ('follow', 'error', 'manual')
 -   **Returns**: A Promise that resolves to a Response object.
--   **Throws**: Errors for invalid proxy URLs or connection failures.
+-   **Throws**: Errors for invalid proxy URLs, connection failures, or redirect errors.
+
+**Proxy Support**:
+-   SOCKS5: `socks5://user:pass@host:port`
+-   SOCKS4: `socks4://host:port`
+-   HTTP: `http://user:pass@host:port`
+-   HTTPS: `https://user:pass@host:port`
 
 If no `proxy` is provided, it falls back to the native `globalThis.fetch`.
 
@@ -103,54 +174,74 @@ Converts proxy URL(s) from various non-standard formats to the standard proxy UR
 -   **Returns**: Standard proxy URL(s) in format `protocol://[user:pass@]host:port`.
 -   **Throws**: Error if the proxy URL format is invalid (unless `skipInvalid` is `true` for arrays).
 
-**Supported input formats**:
--   Standard: `protocol://[user:pass@]host:port`
--   Colon-separated: `protocol://host:port:username:password`
--   Inverted: `protocol://host:port@user:pass`
--   Without protocol: `host:port:username:password` (defaults to `socks5`)
--   IPv6: `[2001:db8::1]:1080` or `socks5://[2001:db8::1]:1080`
+See [Supported Formats](#supported-formats) for detailed examples.
+
+## Configuration
+
+### Proxy URL Formats
+
+The library supports various proxy protocols and authentication methods:
+
+#### SOCKS5
+-   **No Auth**: `socks5://127.0.0.1:9050`
+-   **With Auth**: `socks5://user:password@proxy.example.com:1080`
+-   **IPv6**: `socks5://user:password@[2001:db8::1]:1080`
+
+#### SOCKS4
+-   **Basic**: `socks4://proxy.example.com:1080`
+
+#### HTTP/HTTPS
+-   **No Auth**: `http://proxy.example.com:8080`
+-   **With Auth**: `https://user:password@proxy.example.com:8080`
+
+### Environment Variables
+
+The library also respects standard proxy environment variables:
+-   `SOCKS5_PROXY`
+-   `SOCKS_PROXY`
+-   `HTTP_PROXY`
+-   `HTTPS_PROXY`
+
+#### SOCKS4
+-   **Basic**: `socks4://proxy.example.com:1080`
+
+#### HTTP/HTTPS
+-   **No Auth**: `http://proxy.example.com:8080`
+-   **With Auth**: `https://user:password@proxy.example.com:8080`
+
+### Environment Variables
+
+The library also respects standard proxy environment variables:
+-   `SOCKS5_PROXY`
+-   `SOCKS_PROXY`
+-   `HTTP_PROXY`
+-   `HTTPS_PROXY`
+
+## Supported Formats
+
+The `convert` function supports various non-standard proxy URL formats for maximum compatibility:
+
+-   **Standard**: `protocol://[user:pass@]host:port`
+-   **Colon-separated**: `protocol://host:port:username:password`
+-   **Inverted**: `protocol://host:port@user:pass`
+-   **Without protocol**: `host:port:username:password` (defaults to `socks5`)
+-   **IPv6**: `[2001:db8::1]:1080` or `socks5://[2001:db8::1]:1080`
 
 **Supported protocols**: `socks5`, `socks4`, `http`, `https`
 
 ```typescript
 import { convert } from 'netbun';
 
-// Convert single URL
+// Convert various formats
 convert('proxy.example.com:1080:user:pass')
 // => 'socks5://user:pass@proxy.example.com:1080'
 
-// Convert inverted format
 convert('socks5://proxy.com:1080@admin:secret')
 // => 'socks5://admin:secret@proxy.com:1080'
 
-// Convert array of URLs
-convert([
-  'proxy1.com:1080:user:pass',
-  'http://proxy2.com:8080',
-  'socks5://user:pass@proxy3.com:1080'
-])
-// => [
-//   'socks5://user:pass@proxy1.com:1080',
-//   'http://proxy2.com:8080',
-//   'socks5://user:pass@proxy3.com:1080'
-// ]
-
-// IPv6 support
 convert('[2001:db8::1]:1080:user:pass')
 // => 'socks5://user:pass@[2001:db8::1]:1080'
-
-// Skip invalid URLs
-convert(['valid.com:1080', 'invalid', 'proxy.com:1080'], true)
-// => ['socks5://valid.com:1080', 'socks5://proxy.com:1080']
 ```
-
-## Configuration
-
-The proxy URL must be a valid SOCKS5 URI:
-
--   **No Auth**: `socks5://127.0.0.1:9050`
--   **With Auth**: `socks5://user:password@proxy.example.com:1080`
--   **IPv6**: `socks5://user:password@[2001:db8::1]:1080`
 
 ## License
 
