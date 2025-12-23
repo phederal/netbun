@@ -1,6 +1,6 @@
 {
 	"name": "netbun",
-	"version": "0.1.7",
+	"version": "0.2.0",
 	"description": "Zero-dependency socks proxy implementation for bun runtimer.",
 	"type": "module",
 	"main": "./dist/index.js",
