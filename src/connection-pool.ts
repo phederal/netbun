@@ -28,7 +28,8 @@ export class Socks5ConnectionPool {
 		}
 
 		// Periodic cleanup
-		setInterval(() => this.cleanupStale(), 30000); // cleanup every 30 seconds
+		const timer = setInterval(() => this.cleanupStale(), 30000); // cleanup every 30 seconds
+		timer.unref(); // Don't prevent process from exiting
 	}
 
 	/**
