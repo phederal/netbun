@@ -1,6 +1,6 @@
 {
 	"name": "netbun",
-	"version": "0.2.2",
+	"version": "0.2.3",
 	"description": "Zero-dependency socks proxy implementation for bun runtimer.",
 	"type": "module",
 	"main": "./dist/index.js",
@@ -19,8 +19,7 @@
 		"build": "bun build --target=bun --minify --no-sourcemap src/index.ts --outdir=dist && bun x tsc",
 		"bench": "bun run bench/proxy-bench.ts",
 		"test": "bun test --timeout 25000 ./test",
-		"lint": "biome check ./src --fix",
-		"prepublishOnly": "bun run lint && bun run test && bun run build"
+		"lint": "biome check ./src --fix"
 	},
 	"repository": {
 		"type": "git",
