@@ -459,13 +459,12 @@ export async function fetchInternal(
 			process.env.HTTPS_PROXY;
 		if (envProxy) {
 			proxyUrl = envProxy;
-			// Для HTTP/HTTPS прокси сразу делаем fallback
-			if (
-				envProxy &&
-				envProxy.charCodeAt(0) !== 0x73 &&
-				envProxy.charCodeAt(0) !== 0x68
-			) {
-				return _fetch(input, init);
+			// For HTTP/HTTPS Bun proxy supports natively
+			// 's' (0x73) = socks, everything else (including 'h' for http/https) = native
+			if (envProxy.charCodeAt(0) !== 0x73) {
+				// HTTP/HTTPS proxy - add to init and use native fetch
+				const newInit = { ...init, proxy: envProxy };
+				return _fetch(input, newInit);
 			}
 		} else {
 			return _fetch(input, init);
@@ -484,29 +483,28 @@ export async function fetchInternal(
 		// return _fetch(input, nativeInit);
 	}
 
-	// Быстрый early exit - не SOCKS прокси (http/https прокси поддерживает нативный fetch)
-	if (!url || (url.charCodeAt(0) !== 0x73 && url.charCodeAt(0) !== 0x68)) {
-		// Убираем proxy из init для нативного fetch
-		const { proxy: _, ...nativeInit } = init || {};
-		return _fetch(input, nativeInit);
+	// Fast early exit - not a SOCKS proxy (http/https proxy supports native fetch Bun)
+	// 's' (0x73) = socks, everything else = native fetch
+	if (!url || url.charCodeAt(0) !== 0x73) {
+		// For HTTP/HTTPS proxy we pass init as is - Bun supports proxy option
+		return _fetch(input, init);
 	}
 
 	// Try to parse proxy
 	try {
 		const parsed = parseProxyUrl(url);
-		// Если это HTTP/HTTPS прокси, используем нативный fetch без proxy опции
+		// If this is an HTTP/HTTPS proxy, use native fetch with the proxy option
 		if (parsed.protocol === "http" || parsed.protocol === "https") {
-			const { proxy: _, ...nativeInit } = init || {};
-			return _fetch(input, nativeInit);
+			// Bun supports proxy option in fetch - we pass init as is
+			return _fetch(input, init);
 		}
 	} catch (_err) {
 		console.warn(
 			`Invalid proxy configuration: "${url}". Falling back to native fetch.`,
 		);
 
-		// Fixed: Strip the 'proxy' property so native fetch doesn't error on the unsupported protocol
-		const { proxy: _, ...nativeInit } = init || {};
-		return _fetch(input, nativeInit);
+		// Fallback: pass init as is to native fetch
+		return _fetch(input, init);
 	}
 
 	// 1. Normalize Input using native Request
