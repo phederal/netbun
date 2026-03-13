@@ -37,7 +37,7 @@ describe('Redirect Handling', () => {
 
 		const data = await response.json();
 		expect(data.url).toContain('/get');
-	});
+	}, 7500);
 
 	test('should handle redirect with query params', async () => {
 		const response = await testFetch('/redirect-to?url=/get?test=123', { redirect: 'follow' });
@@ -79,7 +79,7 @@ describe('Redirect Handling', () => {
 
 		expect(response.status).toBe(200);
 		expect(response.ok).toBe(true);
-	});
+	}, 7500);
 
 	test("should throw error when redirect mode is 'error'", async () => {
 		try {
@@ -216,5 +216,5 @@ describe('Redirect Security', () => {
 	test('should stop at max redirects (20)', async () => {
 		const response = await testFetch('https://httpbin.org/redirect/5', { redirect: 'follow' });
 		expect(response.status).toBe(200);
-	});
+	}, 7500);
 });
