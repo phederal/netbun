@@ -451,7 +451,7 @@ export async function fetchInternal(
 	// Fallback 1: No proxy specified - check env vars
 	let proxyUrl: string | undefined;
 
-	if (!init?.proxy) {
+	if (init?.proxy === undefined) {
 		const envProxy =
 			process.env.SOCKS5_PROXY ||
 			process.env.SOCKS_PROXY ||
@@ -469,6 +469,10 @@ export async function fetchInternal(
 		} else {
 			return _fetch(input, init);
 		}
+	} else if (init?.proxy === null) {
+		// Explicitly disabled proxy - use native fetch and remove proxy from init
+		const { proxy: _, ...initWithoutProxy } = init || {};
+		return _fetch(input, initWithoutProxy);
 	} else {
 		proxyUrl = typeof init.proxy === "string" ? init.proxy : init.proxy.url;
 	}
@@ -635,8 +639,9 @@ export async function fetchInternal(
 			socket.write(bodyUint8);
 		}
 
-		// 7. Read Raw Response
-		let buffer = Buffer.alloc(0);
+		// 7. Read Raw Response - use array of chunks for better performance
+		const chunks: Buffer[] = [];
+		let totalLength = 0;
 		let headersParsed = false;
 		let contentLength: number | null = null;
 		let headers: Headers | null = null;
@@ -645,9 +650,12 @@ export async function fetchInternal(
 		let bodyStart = 0;
 
 		socket.on("data", (chunk) => {
-			buffer = Buffer.concat([buffer, chunk]);
+			chunks.push(chunk);
+			totalLength += chunk.length;
 
 			if (!headersParsed) {
+				// Concatenate only to find headers separator
+				const buffer = Buffer.concat(chunks);
 				const splitIndex = buffer.indexOf(HTTP_SEPARATOR);
 				if (splitIndex === -1) return; // Wait for more data
 
@@ -677,12 +685,14 @@ export async function fetchInternal(
 				headersParsed = true;
 
 				// Check if we have the full body
-				checkComplete();
+				checkComplete(buffer);
 			} else {
-				checkComplete();
+				// Headers already parsed, check body completeness
+				const buffer = Buffer.concat(chunks);
+				checkComplete(buffer);
 			}
 
-			function checkComplete() {
+			function checkComplete(buffer: Buffer) {
 				if (!headers || !headersParsed) return;
 
 				const transferEncoding = headers.get("transfer-encoding");
@@ -700,7 +710,7 @@ export async function fetchInternal(
 					}
 				} else if (contentLength !== null) {
 					if (bodyBuffer.length >= contentLength) {
-						processResponse();
+						processResponse(buffer);
 						return;
 					}
 				} else {
@@ -717,10 +727,12 @@ export async function fetchInternal(
 				return;
 			}
 
-			processResponse();
+			// Concatenate all chunks once at the end
+			const buffer = Buffer.concat(chunks);
+			processResponse(buffer);
 		});
 
-		function processResponse() {
+		function processResponse(buffer: Buffer) {
 			if (!headers) return;
 
 			let rawBody: Uint8Array = new Uint8Array(buffer.subarray(bodyStart));
