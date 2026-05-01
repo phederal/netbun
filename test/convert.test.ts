@@ -265,40 +265,30 @@ describe("convert", () => {
 		});
 	});
 
-	describe("Single string input - SOCKS4", () => {
-		test("should handle socks4 proxy without auth", () => {
-			expect(convert("socks4://proxy.example.com:1080")).toBe(
-				"socks4://proxy.example.com:1080",
+	describe("SOCKS4 protocol - rejected (not supported)", () => {
+		test("should reject socks4 protocol prefix", () => {
+			expect(() => convert("socks4://proxy.example.com:1080")).toThrow(
+				/Unsupported proxy protocol: socks4/,
 			);
 		});
 
-		test("should handle socks4 proxy with colon-separated auth", () => {
-			expect(convert("socks4://proxy.example.com:1080:user:pass")).toBe(
-				"socks4://user:pass@proxy.example.com:1080",
-			);
+		test("should reject socks4 with auth", () => {
+			expect(() =>
+				convert("socks4://user:pass@proxy.example.com:1080"),
+			).toThrow(/Unsupported proxy protocol: socks4/);
 		});
 
-		test("should handle socks4 proxy with standard auth format", () => {
-			const url = "socks4://user:pass@proxy.example.com:1080";
-			expect(convert(url)).toBe(url);
-		});
-
-		test("should convert socks4 inverted format", () => {
-			expect(convert("socks4://proxy.example.com:1080@user:pass")).toBe(
-				"socks4://user:pass@proxy.example.com:1080",
-			);
-		});
-
-		test("should handle socks4 proxy with special chars in password", () => {
-			expect(convert("socks4://proxy.example.com:1080:user:p@ss#123")).toBe(
-				"socks4://user:p%40ss%23123@proxy.example.com:1080",
-			);
-		});
-
-		test("should handle socks4 proxy with IP address", () => {
-			expect(convert("socks4://192.168.1.1:1080")).toBe(
-				"socks4://192.168.1.1:1080",
-			);
+		test("error message lists only supported protocols", () => {
+			try {
+				convert("socks4://proxy.example.com:1080");
+				throw new Error("should not reach");
+			} catch (e) {
+				const msg = (e as Error).message;
+				expect(msg).toContain("socks5");
+				expect(msg).toContain("http");
+				expect(msg).toContain("https");
+				expect(msg).not.toMatch(/\bsocks4\b(?!\.)/);
+			}
 		});
 	});
 
