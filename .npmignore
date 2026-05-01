@@ -1,6 +1,13 @@
 # Exclude test files
 *.test.ts
 
+# Exclude md
+*.md
+!README.md
+
+# Exclude json
+*.json
+
 # Exclude development files
 .github/
 .gitignore
