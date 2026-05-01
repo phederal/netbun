@@ -19,8 +19,6 @@ describe('Proxy', () => {
 			console.warn('⚠️ No SOCKS5_PROXY env or proxies.json available. Skipping tests.');
 			return;
 		}
-
-		// console.log(`🔌 Using Proxy: ${PROXY_URL}`);
 	});
 
 	test('Security: Proxy IP should differ from Local IP', async () => {
@@ -35,8 +33,6 @@ describe('Proxy', () => {
 		// 2. Proxy IP
 		const proxyRes = await socksFetch(ipService, { proxy: PROXY_URL, tls: { rejectUnauthorized: false } });
 		const proxyJson = await proxyRes.json();
-
-		// console.log(`🏠 Local: ${localJson.ip} | 🌍 Proxy: ${proxyJson.ip}`);
 
 		expect(proxyRes.status).toBe(200);
 		expect(proxyJson.ip).toBeDefined();

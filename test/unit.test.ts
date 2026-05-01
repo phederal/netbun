@@ -76,6 +76,12 @@ describe("parseProxyUrl", () => {
 		);
 	});
 
+	test("rejects socks4 (not supported)", () => {
+		expect(() => internals.parseProxyUrl("socks4://127.0.0.1:1080")).toThrow(
+			/Unsupported proxy protocol/,
+		);
+	});
+
 	test("throws on malformed URL", () => {
 		expect(() => internals.parseProxyUrl("not-a-url")).toThrow(
 			"Invalid proxy URL",
