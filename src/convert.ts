@@ -5,7 +5,7 @@ const PORT_REGEX = /^\d+$/;
 /**
  * Converts proxy URL(s) from non-standard format to standard proxy URL format.
  *
- * Supported protocols: socks5, socks4, http, https
+ * Supported protocols: socks5, http, https
  *
  * Supported input formats:
  * - Standard: protocol://[user:pass@]host:port
@@ -89,30 +89,16 @@ export function convertLine(proxyUrl: string): string {
 	const protocolIdx = proxyUrl.indexOf("://");
 
 	if (protocolIdx !== -1) {
-		// Quick validation for known protocols using charCodeAt - check first char
-		const c0 = proxyUrl.charCodeAt(0);
-
-		// Early exit for invalid first char
-		if (c0 !== 0x73 && c0 !== 0x68) {
-			// Not 's' or 'h', invalid protocol
-			protocol = proxyUrl.substring(0, protocolIdx);
-			throw new Error(
-				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, socks4, http, https.`,
-			);
-		}
-
 		protocol = proxyUrl.substring(0, protocolIdx);
 		remaining = proxyUrl.substring(protocolIdx + 3);
 
-		// Validate protocol using charCodeAt for speed
-		const valid =
-			(c0 === 0x73 &&
-				(protocol.charCodeAt(5) === 0x35 || protocol.charCodeAt(5) === 0x34)) || // socks5 or socks4
-			c0 === 0x68; // http or https
-
-		if (!valid) {
+		if (
+			protocol !== "socks5" &&
+			protocol !== "http" &&
+			protocol !== "https"
+		) {
 			throw new Error(
-				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, socks4, http, https.`,
+				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, http, https.`,
 			);
 		}
 	}
