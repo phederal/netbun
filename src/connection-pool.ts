@@ -11,143 +11,155 @@ export interface PooledConnection {
 	created: number;
 }
 
+/**
+ * Strip listeners that may have been attached during a previous request.
+ *
+ * Sockets returned from the pool must look "fresh" to the next caller — any
+ * leftover `data`/`end`/`error`/`timeout` handlers from the previous request
+ * would otherwise misroute bytes or fire spurious errors.
+ */
+function stripSocketListeners(socket: net.Socket | tls.TLSSocket): void {
+	socket.removeAllListeners("data");
+	socket.removeAllListeners("end");
+	socket.removeAllListeners("error");
+	socket.removeAllListeners("timeout");
+	socket.removeAllListeners("close");
+	socket.setTimeout(0);
+}
+
 export class Socks5ConnectionPool {
 	private pool = new Map<string, PooledConnection[]>();
-	private maxConnectionsPerKey = 50;
+	private maxConnectionsPerHost = 10;
 	private connectionTtl = 60000; // 60 seconds
+	private cleanupTimer: ReturnType<typeof setInterval>;
 
 	constructor(options?: {
-		maxConnectionsPerKey?: number;
+		maxConnectionsPerHost?: number;
 		connectionTtl?: number;
 	}) {
-		if (options?.maxConnectionsPerKey) {
-			this.maxConnectionsPerKey = options.maxConnectionsPerKey;
+		if (typeof options?.maxConnectionsPerHost === "number") {
+			this.maxConnectionsPerHost = options.maxConnectionsPerHost;
 		}
-		if (options?.connectionTtl) {
+		if (typeof options?.connectionTtl === "number") {
 			this.connectionTtl = options.connectionTtl;
 		}
 
-		// Periodic cleanup
-		const timer = setInterval(() => this.cleanupStale(), 30000); // cleanup every 30 seconds
-		timer.unref(); // Don't prevent process from exiting
+		this.cleanupTimer = setInterval(() => this.cleanupStale(), 30000);
+		this.cleanupTimer.unref?.();
 	}
 
 	/**
-	 * Get a connection from the pool or return null if none available
+	 * Take a healthy connection from the pool, or null if none available.
+	 * The returned socket has had all prior listeners stripped — caller owns it
+	 * and must either re-release or destroy.
 	 */
 	getConnection(key: string): PooledConnection | null {
 		const connections = this.pool.get(key);
-		if (!connections || connections.length === 0) {
-			return null;
-		}
+		if (!connections || connections.length === 0) return null;
 
-		// Find a healthy connection
-		for (let i = 0; i < connections.length; i++) {
-			const conn = connections[i];
+		while (connections.length > 0) {
+			const conn = connections.pop() as PooledConnection;
 			if (this.isConnectionHealthy(conn)) {
-				// Remove from pool and return
-				connections.splice(i, 1);
+				stripSocketListeners(conn.socket);
 				conn.lastUsed = Date.now();
 				return conn;
 			}
+			conn.socket.destroy();
 		}
 
+		this.pool.delete(key);
 		return null;
 	}
 
 	/**
-	 * Release a connection back to the pool
+	 * Return a connection to the pool, or destroy it if the pool is full
+	 * or the connection is unhealthy.
 	 */
-	async releaseConnection(
-		key: string,
-		connection: PooledConnection,
-	): Promise<void> {
+	releaseConnection(key: string, connection: PooledConnection): void {
 		if (!this.isConnectionHealthy(connection)) {
-			// Destroy unhealthy connection
 			connection.socket.destroy();
 			return;
 		}
 
 		const connections = this.pool.get(key) || [];
-		if (connections.length >= this.maxConnectionsPerKey) {
-			// Pool full, destroy connection
+		if (connections.length >= this.maxConnectionsPerHost) {
 			connection.socket.destroy();
 			return;
 		}
 
-		// Add to pool
+		// Strip listeners before parking the socket so leftover handlers from
+		// the just-finished request can't fire on subsequent activity.
+		stripSocketListeners(connection.socket);
 		connection.lastUsed = Date.now();
 		connections.push(connection);
 		this.pool.set(key, connections);
 	}
 
-	/**
-	 * Cleanup stale connections
-	 */
+	/** Drop connections that exceeded the TTL. */
 	cleanupStale(): void {
 		const now = Date.now();
 		for (const [key, connections] of this.pool.entries()) {
-			const validConnections = connections.filter((conn) => {
+			const valid = connections.filter((conn) => {
 				if (now - conn.lastUsed > this.connectionTtl) {
+					conn.socket.destroy();
+					return false;
+				}
+				if (!this.isConnectionHealthy(conn)) {
 					conn.socket.destroy();
 					return false;
 				}
 				return true;
 			});
 
-			if (validConnections.length === 0) {
-				this.pool.delete(key);
-			} else {
-				this.pool.set(key, validConnections);
-			}
+			if (valid.length === 0) this.pool.delete(key);
+			else this.pool.set(key, valid);
 		}
 	}
 
 	/**
-	 * Check if a connection is healthy
+	 * A socket is healthy iff it is not destroyed and is still both readable
+	 * and writable. We deliberately do NOT inspect TLS authorization state:
+	 * users may pass `rejectUnauthorized: false`, in which case `authorized`
+	 * is `false` and `authorizationError` is `null` — that combination is
+	 * legitimate, not a sign of a broken socket.
 	 */
 	private isConnectionHealthy(connection: PooledConnection): boolean {
 		const socket = connection.socket;
-
-		// Check if socket is still connected
-		if (socket.destroyed || !socket.writable || !socket.readable) {
-			return false;
-		}
-
-		// For TLS sockets, check if secure connection is established
-		if (connection.useTLS && "authorized" in socket) {
-			const tlsSocket = socket as tls.TLSSocket;
-			if (!tlsSocket.authorized && !tlsSocket.authorizationError) {
-				return false;
-			}
-		}
-
+		if (socket.destroyed) return false;
+		if (!socket.writable || !socket.readable) return false;
 		return true;
 	}
 
-	/**
-	 * Get pool statistics
-	 */
-	getStats(): { [key: string]: number } {
-		const stats: { [key: string]: number } = {};
+	/** Number of pooled connections per key. Useful for tests/diagnostics. */
+	getStats(): Record<string, number> {
+		const stats: Record<string, number> = {};
 		for (const [key, connections] of this.pool.entries()) {
 			stats[key] = connections.length;
 		}
 		return stats;
 	}
 
-	/**
-	 * Clear all connections
-	 */
+	/** Total number of pooled connections across all keys. */
+	get size(): number {
+		let total = 0;
+		for (const conns of this.pool.values()) total += conns.length;
+		return total;
+	}
+
+	/** Destroy every pooled connection and clear the pool. */
 	clear(): void {
 		for (const connections of this.pool.values()) {
-			for (const conn of connections) {
-				conn.socket.destroy();
-			}
+			for (const conn of connections) conn.socket.destroy();
 		}
 		this.pool.clear();
 	}
+
+	/** Stop the periodic cleanup timer. Mainly for tests. */
+	dispose(): void {
+		clearInterval(this.cleanupTimer);
+		this.clear();
+	}
 }
 
-// Global pool instance
+// Process-wide pool used by the public fetch().
 export const globalConnectionPool = new Socks5ConnectionPool();
