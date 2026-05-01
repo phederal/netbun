@@ -4,7 +4,7 @@
 [![npm version](https://badge.fury.io/js/netbun.svg)](https://badge.fury.io/js/netbun)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance, zero-dependency fetch implementation for [Bun](https://bun.sh) with comprehensive proxy support, including SOCKS5, SOCKS4, HTTP, and HTTPS proxies. Features automatic decompression, redirect handling, connection pooling, and more.
+A high-performance, zero-dependency fetch implementation for [Bun](https://bun.sh) with comprehensive proxy support, including SOCKS5, HTTP, and HTTPS proxies. Features automatic decompression, redirect handling, connection pooling, and more.
 
 This library extends Bun's native capabilities by providing a drop-in replacement for `fetch` that supports various proxy protocols and advanced networking features not available in the standard implementation.
 
@@ -22,8 +22,8 @@ This library extends Bun's native capabilities by providing a drop-in replacemen
 ## Features
 
 -   🚀 **Zero Dependencies**: Uses only Bun/Node native modules (`net`, `tls`, `zlib`).
--   🧦 **Comprehensive Proxy Support**: SOCKS5, SOCKS4, HTTP, and HTTPS proxies with automatic fallback.
--   🔒 **SOCKS5 & SOCKS4**: Full handshake with Username/Password authentication (RFC 1928/1929).
+-   🧦 **Comprehensive Proxy Support**: SOCKS5, HTTP, and HTTPS proxies with automatic fallback.
+-   🔒 **SOCKS5**: Full handshake with Username/Password authentication (RFC 1928/1929).
 -   🌐 **HTTPS/TLS**: Automatic socket upgrade to TLS for secure connections.
 -   📦 **Native Fetch API**: Drop-in replacement with identical interface to standard `fetch`.
 -   ⚡ **High Performance**: Connection pooling, streaming responses, and optimized parsing.
@@ -120,9 +120,6 @@ import { fetch } from 'netbun';
 // SOCKS5 proxy
 await fetch('https://example.com', { proxy: 'socks5://user:pass@host:1080' });
 
-// SOCKS4 proxy
-await fetch('https://example.com', { proxy: 'socks4://host:1080' });
-
 // HTTP proxy
 await fetch('https://example.com', { proxy: 'http://user:pass@host:8080' });
 
@@ -158,7 +155,6 @@ An enhanced fetch function with comprehensive proxy support and advanced network
 
 **Proxy Support**:
 -   SOCKS5: `socks5://user:pass@host:port`
--   SOCKS4: `socks4://host:port`
 -   HTTP: `http://user:pass@host:port`
 -   HTTPS: `https://user:pass@host:port`
 
@@ -187,9 +183,6 @@ The library supports various proxy protocols and authentication methods:
 -   **With Auth**: `socks5://user:password@proxy.example.com:1080`
 -   **IPv6**: `socks5://user:password@[2001:db8::1]:1080`
 
-#### SOCKS4
--   **Basic**: `socks4://proxy.example.com:1080`
-
 #### HTTP/HTTPS
 -   **No Auth**: `http://proxy.example.com:8080`
 -   **With Auth**: `https://user:password@proxy.example.com:8080`
@@ -201,9 +194,6 @@ The library also respects standard proxy environment variables:
 -   `SOCKS_PROXY`
 -   `HTTP_PROXY`
 -   `HTTPS_PROXY`
-
-#### SOCKS4
--   **Basic**: `socks4://proxy.example.com:1080`
 
 #### HTTP/HTTPS
 -   **No Auth**: `http://proxy.example.com:8080`
@@ -227,7 +217,7 @@ The `convert` function supports various non-standard proxy URL formats for maxim
 -   **Without protocol**: `host:port:username:password` (defaults to `socks5`)
 -   **IPv6**: `[2001:db8::1]:1080` or `socks5://[2001:db8::1]:1080`
 
-**Supported protocols**: `socks5`, `socks4`, `http`, `https`
+**Supported protocols**: `socks5`, `http`, `https`
 
 ```typescript
 import { convert } from 'netbun';
