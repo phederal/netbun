@@ -512,6 +512,15 @@ function decompressBody(body: Uint8Array, headers: Headers): Uint8Array {
   const contentEncoding = headers.get("content-encoding");
   if (!contentEncoding) return body;
 
+  // Empty body cannot be meaningfully decompressed (and zlib will throw on it).
+  // This commonly happens on HEAD / 204 / 304 / 302 responses where servers
+  // still echo back `Content-Encoding` from the request's `Accept-Encoding`.
+  if (body.byteLength === 0) {
+    headers.delete("content-encoding");
+    headers.set("content-length", "0");
+    return body;
+  }
+
   let out = body;
   const encodings = contentEncoding
     .split(",")
@@ -637,7 +646,17 @@ export function sendRequestOverSocket(
 
     const finishWith = (responseBody: Uint8Array) => {
       if (!parsed || !bodyMode) return;
-      const finalBody = decompressBody(responseBody, parsed.headers);
+      let finalBody: Uint8Array;
+      try {
+        finalBody = decompressBody(responseBody, parsed.headers);
+      } catch (err) {
+        settle(() => {
+          cleanup();
+          socket.destroy();
+          reject(err);
+        });
+        return;
+      }
       const keepAlive =
         bodyMode.mode !== "close" &&
         !socket.destroyed &&
@@ -710,6 +729,13 @@ export function sendRequestOverSocket(
         const after = headBuf.subarray(head.bodyStart);
         headBuf = Buffer.alloc(0);
         if (bodyMode.mode === "empty") {
+          finishWith(new Uint8Array(0));
+          return;
+        }
+        // Length=0 with no body bytes after the head: complete immediately.
+        // `consumeBody` is only invoked when there are bytes to feed, so without
+        // this check 302/204/etc. with `Content-Length: 0` would hang forever.
+        if (bodyMode.mode === "length" && bodyMode.length === 0) {
           finishWith(new Uint8Array(0));
           return;
         }
