@@ -299,25 +299,20 @@ describe.only('Fetch API Comprehensive Tests', () => {
 			expect(data.method).toBe('GET');
 		});
 
-		test('proxy fallback to native fetch', async () => {
-			// Test with invalid proxy - should fallback to native fetch
-			try {
-				const controller = new AbortController();
-				setTimeout(() => controller.abort(), TIMEOUT);
-				const response = await fetch(`${TEST_BASE_URL}/get`, {
+		test('invalid proxy URL throws (no silent fallback)', async () => {
+			// When the user explicitly provides a proxy URL we cannot understand,
+			// we surface the error rather than letting the request leak out
+			// without proxying — silent fallback would defeat the proxy contract
+			// and is a security risk.
+			const controller = new AbortController();
+			setTimeout(() => controller.abort(), TIMEOUT);
+			await expect(
+				fetch(`${TEST_BASE_URL}/get`, {
 					proxy: 'invalid://proxy',
 					tls: { rejectUnauthorized: false },
 					signal: controller.signal,
-				});
-				expect(response.ok).toBe(true);
-			} catch (error) {
-				// Handle certificate expiration errors gracefully
-				if (error instanceof Error && error.message.includes('CERT_HAS_EXPIRED')) {
-					console.log('⚠️  Certificate expired - test passed (fallback worked)');
-				} else {
-					throw error;
-				}
-			}
+				}),
+			).rejects.toThrow(/Invalid proxy URL/);
 		});
 	});
 

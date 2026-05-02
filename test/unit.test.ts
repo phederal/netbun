@@ -121,3 +121,29 @@ describe("decodeChunked", () => {
 
 // For connectSocks5, it's harder to unit test without mocking, so perhaps integration tests are better.
 // But for completeness, a mock test could be added, but since tool calls are disabled, I'll skip.
+
+describe("fetchInternal: invalid proxy URL handling", () => {
+	test("throws (does not silently fall back) when proxy URL cannot be converted", async () => {
+		await expect(
+			internals.fetchInternal("https://example.com/", {
+				proxy: "ftp://nope:1080",
+			}),
+		).rejects.toThrow(/Invalid proxy URL/);
+	});
+
+	test("error message mentions the original user-supplied URL", async () => {
+		await expect(
+			internals.fetchInternal("https://example.com/", {
+				proxy: "garbage://x",
+			}),
+		).rejects.toThrow(/garbage:\/\/x/);
+	});
+
+	test("rejects unsupported socks4 with a clear error (no silent native fallback)", async () => {
+		await expect(
+			internals.fetchInternal("https://example.com/", {
+				proxy: "socks4://1.2.3.4:1080",
+			}),
+		).rejects.toThrow(/socks4/);
+	});
+});
