@@ -82,6 +82,21 @@ describe("parseProxyUrl", () => {
 		);
 	});
 
+	test("accepts socks5h as an alias for socks5", () => {
+		const result = internals.parseProxyUrl(
+			"socks5h://user:pass@127.0.0.1:1080",
+		);
+		// socks5h normalizes to socks5 — they share the same handshake; the
+		// only difference (remote DNS) is the default behaviour anyway.
+		expect(result).toEqual({
+			host: "127.0.0.1",
+			port: 1080,
+			user: "user",
+			password: "pass",
+			protocol: "socks5",
+		});
+	});
+
 	test("throws on malformed URL", () => {
 		expect(() => internals.parseProxyUrl("not-a-url")).toThrow(
 			"Invalid proxy URL",

@@ -92,13 +92,17 @@ export function convertLine(proxyUrl: string): string {
 		protocol = proxyUrl.substring(0, protocolIdx);
 		remaining = proxyUrl.substring(protocolIdx + 3);
 
+		// socks5h is accepted as an alias for socks5 — by default we already
+		// send the target hostname to the proxy (ATYP=0x03), which is the
+		// behaviour socks5h denotes.
 		if (
 			protocol !== "socks5" &&
+			protocol !== "socks5h" &&
 			protocol !== "http" &&
 			protocol !== "https"
 		) {
 			throw new Error(
-				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, http, https.`,
+				`Unsupported proxy protocol: ${protocol}. Supported protocols: socks5, socks5h, http, https.`,
 			);
 		}
 	}
