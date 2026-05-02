@@ -108,10 +108,14 @@ describe("decodeChunked", () => {
 		expect(result).toEqual(new Uint8Array(0));
 	});
 
-	test("ignores malformed chunks", () => {
+	test("stops at first malformed size (strict framing)", () => {
+		// A bad size token means the chunked stream is desynced; the strict
+		// parser stops there and returns whatever it had decoded before. We
+		// deliberately do NOT skip past garbage and resume — that would risk
+		// surfacing wrong bytes as a "successful" body.
 		const chunked = Buffer.from("invalid\r\n5\r\nhello\r\n0\r\n\r\n");
 		const result = internals.decodeChunked(chunked);
-		expect(result).toEqual(new Uint8Array(Buffer.from("hello")));
+		expect(result).toEqual(new Uint8Array(0));
 	});
 });
 
