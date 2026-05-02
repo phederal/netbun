@@ -1022,14 +1022,17 @@ export async function fetchInternal(
     proxyUrl = typeof init.proxy === "string" ? init.proxy : init.proxy.url;
   }
 
-  let url = proxyUrl;
-
+  let url: string;
   try {
-    url = convert(url);
-  } catch (_err) {
-    console.error(`Error converting proxy URL ${proxyUrl}`);
-    // const { proxy: _, ...nativeInit } = init || {};
-    // return _fetch(input, nativeInit);
+    url = convert(proxyUrl);
+  } catch (err) {
+    // User explicitly supplied a proxy URL we cannot understand. Propagate the
+    // error rather than silently falling through with the original string —
+    // otherwise `parseProxyUrl` either fails further down with a less specific
+    // message, or worse, the request leaks out without proxying at all.
+    throw new Error(
+      `Invalid proxy URL "${proxyUrl}": ${(err as Error).message}`,
+    );
   }
 
   // Fast early exit - not a SOCKS proxy (http/https proxy supports native fetch Bun)
